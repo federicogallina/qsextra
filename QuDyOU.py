@@ -1,10 +1,8 @@
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile, assemble, execute
-from qiskit.extensions import HamiltonianGate, UnitaryGate
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile, assemble
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.opflow import PauliSumOp, X, Y, Z, PauliTrotterEvolution
 from qiskit.circuit import Parameter
 import numpy as np
-import scipy as sp
 import itertools
 from math import prod
 
@@ -51,25 +49,23 @@ class _CNA():
         qubits = int(np.ceil(np.log2(N)))
         q_reg = QuantumRegister(qubits)
         qc = QuantumCircuit(q_reg)
-        print(Pauli_dict)
         for Pauli_string, Pauli_coef in Pauli_dict.items():
             last_qubit = None
-            inverse_Pauli_string = Pauli_string[::-1] #order of qubits is the inverse of the reading order of the string
             qc_rotations = QuantumCircuit(q_reg)
-            for npauli, pauli in enumerate(inverse_Pauli_string):
+            for npauli, pauli in enumerate(Pauli_string):
                 if pauli == 'X':
                     qc_rotations.h(npauli)
                 elif pauli == 'Y':
                     qc_rotations.h(npauli)
                     qc_rotations.rz(np.pi/2, npauli)
             qc_stairs = QuantumCircuit(q_reg)
-            for npauli, pauli in enumerate(inverse_Pauli_string):
+            for npauli, pauli in enumerate(Pauli_string):
                 if pauli != 'I':
                     last_qubit = npauli
                     finder = False
                     index = npauli + 1
                     while finder == False and index < qubits:
-                        if inverse_Pauli_string[index] == 'I':
+                        if Pauli_string[index] == 'I':
                             index = index + 1
                         else:
                             finder = True
@@ -80,7 +76,6 @@ class _CNA():
                 qc.rz(Pauli_coef * dt, last_qubit)
                 qc.compose(qc_stairs.inverse(),inplace=True)
                 qc.compose(qc_rotations.inverse(),inplace=True)
-        print(qc.draw())
         return qc
 
     def __sys_free_evolution(self, H, N, dt, backend):
@@ -193,8 +188,6 @@ class _CNA():
                 energies = np.diag(H) + H_fluc
                 qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
                 H_fluc = self.fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
-            
-            print('Fase 1')
 
             #Solving the circuits
             qobjs = assemble(qcs, backend=backend)
@@ -210,9 +203,6 @@ class _CNA():
                     except:
                         pass
 
-            if traj%100 == 0:
-                print('Ancora ', shots-traj-1)
-
         return populations
 
 class _CA():
@@ -225,9 +215,9 @@ class _CA():
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
             qc = QuantumCircuit(q_reg)
-            H = np.pad(H, ((0,qubits-N), (0,qubits-N)), mode='constant', constant_values=0)
+            H = np.pad(H, ((0,2**qubits-N), (0,2**qubits-N)), mode='constant', constant_values=0)
             sys_encoded = []
-            projectors_dict = {}
+            site_energies_dict = {}
             for index in range(N):
                 sys_encoded.append('{:b}'.format(index).zfill(qubits)) #Creating a list with the bit strings representing the sites of the system
                 #Creating the Pauli strings corresponding to the projectors
@@ -242,10 +232,10 @@ class _CA():
                 Pauli_coefs_comb = [H[index,index]*prod(Pauli_coefs_comb[i]) for i in range(len(Pauli_coefs_comb))]
                 for i, Pauli_string in enumerate(Pauli_strings):
                     try:
-                        projectors_dict[Pauli_string] = projectors_dict[Pauli_string] + Pauli_coefs_comb[i]
+                        site_energies_dict[Pauli_string] = site_energies_dict[Pauli_string] + Pauli_coefs_comb[i]
                     except:
-                        projectors_dict[Pauli_string] = Pauli_coefs_comb[i]
-            projectors_op = PauliTrotterEvolution().convert((PauliSumOp(SparsePauliOp(list(projectors_dict.keys()),coeffs=list(projectors_dict.values()))) * dt).exp_i())
+                        site_energies_dict[Pauli_string] = Pauli_coefs_comb[i]
+            projectors_op = PauliTrotterEvolution().convert((PauliSumOp(SparsePauliOp(list(site_energies_dict.keys()),coeffs=list(site_energies_dict.values()))) * dt).exp_i())
             qc.compose(projectors_op.to_circuit(),range(qubits),inplace=True)
 
             interactions_dict = {}
@@ -341,31 +331,51 @@ class _CA():
             if c_dict[key] != -c_dagger_dict[key]:
                 c_plus_c_dagger_dict[key] = c_dict[key] + c_dagger_dict[key]
         
-        #Converting dictionaries to PauliOp objects
-        c_dagger = PauliSumOp(SparsePauliOp(list(c_dagger_dict.keys()),coeffs=list(c_dagger_dict.values())))
-        c = PauliSumOp(SparsePauliOp(list(c_dict.keys()),coeffs=list(c_dict.values())))
-        c_plus_c_dagger = PauliSumOp(SparsePauliOp(list(c_plus_c_dagger_dict.keys()),coeffs=list(c_plus_c_dagger_dict.values())))
+        return c_dagger_dict, c_dict, c_plus_c_dagger_dict
 
-        return c_dagger, c, c_plus_c_dagger
-
-    def __sys_pseudo_interaction(self, N, dt, Gamma, tau, c_plus_c_dagger, qubits_per_pseudomode):
+    def __sys_pseudo_interaction(self, N, dt, Gamma, tau, c_plus_c_dagger_dict, qubits_per_pseudomode):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
             pseudo_reg = [QuantumRegister(qubits_per_pseudomode,name='pseudomode_{}'.format(i)) for i in range(N)]
             qc = QuantumCircuit(q_reg, *pseudo_reg)
+            sys_encoded = []
+            site_energies_dict = {}
+            for index in range(N):
+                sys_encoded.append('{:b}'.format(index).zfill(qubits)) #Creating a list with the bit strings representing the sites of the system
+                #Creating the Pauli strings corresponding to the projectors
+                Pauli_ops = []
+                Pauli_coefs = []
+                for i in range(qubits):
+                    Pauli_ops.append(['I','Z'])
+                    Pauli_coefs.append([1./2,1./2]) if sys_encoded[index][i] == '0' else Pauli_coefs.append([1./2,-1./2])
+                Pauli_strings_sys = list(itertools.product(*Pauli_ops))
+                Pauli_strings_sys = [''.join(Pauli_strings_sys[i]) for i in range(len(Pauli_strings_sys))]
+                Pauli_coefs_comb_sys = list(itertools.product(*Pauli_coefs))
+                Pauli_coefs_comb_sys = [prod(Pauli_coefs_comb_sys[i]) for i in range(len(Pauli_coefs_comb_sys))]
+                Pauli_interaction_dict = {}
+                for i, Pauli_string in enumerate(Pauli_strings_sys):
+                    for Pauli_string_pseudo, Pauli_coef_pseudo in c_plus_c_dagger_dict.items():
+                        Pauli_interaction_dict[Pauli_string + Pauli_string_pseudo] = Pauli_coefs_comb_sys[i] * Pauli_coef_pseudo
+                pseudo_sys_op = PauliTrotterEvolution().convert((PauliSumOp(SparsePauliOp(list(Pauli_interaction_dict.keys()), coeffs=list(Pauli_interaction_dict.values()))) * dt).exp_i())
+                qubit_list = pseudo_reg[index][0:qubits_per_pseudomode]
+                qubit_list.extend(q_reg[0:qubits])
+                qc.compose(pseudo_sys_op.to_circuit(),qubit_list,inplace=True)
 
         else:
             q_reg = QuantumRegister(N)
             pseudo_reg = [QuantumRegister(qubits_per_pseudomode,name='pseudomode_{}'.format(i)) for i in range(N)]
             qc = QuantumCircuit(q_reg, *pseudo_reg)
+            c_plus_c_dagger = PauliSumOp(SparsePauliOp(list(c_plus_c_dagger_dict.keys()),coeffs=list(c_plus_c_dagger_dict.values())))
             pseudo_sys_Hamiltonian = - np.sqrt(Gamma/tau) / 2 * Z ^ c_plus_c_dagger
             pseudo_sys_op = PauliTrotterEvolution().convert((pseudo_sys_Hamiltonian * dt).exp_i())
             for i in range(N):
                 qubit_list = pseudo_reg[i][0:qubits_per_pseudomode]
                 qubit_list.append(q_reg[i])
                 qc.compose(pseudo_sys_op.to_circuit(),qubit_list,inplace=True)
+
+        return qc
 
     def __Trotter_step(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend):
         #Initializing the registers
@@ -379,12 +389,15 @@ class _CA():
         qc = QuantumCircuit(q_reg, *pseudo_reg, ancilla)
 
         #System self-Hamiltonian free propagation
-        qc.compose(self.__sys_free_evolution(H,N,dt),q_reg[0:-1],inplace=True)
+        qc.compose(self.__sys_free_evolution(H,N,dt),q_reg,inplace=True)
 
         #Pseudomodes operators
-        c_dagger, c, c_plus_c_dagger = self.__Pseudomodes_ops(qubits_per_pseudomode)
+        c_dagger_dict, c_dict, c_plus_c_dagger_dict = self.__Pseudomodes_ops(qubits_per_pseudomode)
+        #Converting dictionaries to PauliOp objects
+        c_dagger = PauliSumOp(SparsePauliOp(list(c_dagger_dict.keys()),coeffs=list(c_dagger_dict.values())))
+        c = PauliSumOp(SparsePauliOp(list(c_dict.keys()),coeffs=list(c_dict.values())))
         #Pseudomodes-System interaction
-        qc.compose(self.__sys_pseudo_interaction(self, N, dt, Gamma, tau, c_plus_c_dagger, qubits_per_pseudomode),inplace=True)
+        qc.compose(self.__sys_pseudo_interaction(N, dt, Gamma, tau, c_plus_c_dagger_dict, qubits_per_pseudomode), inplace=True)
         #Pseudomodes-ancilla collisions
         pseudo_ancilla_Hamiltonian = ((X + (1.j * Y)) ^ c_dagger) + ((X - (1.j * Y)) ^ c)
         pseudo_ancilla_Hamiltonian = pseudo_ancilla_Hamiltonian.reduce() #Simplify the primitive SparsePauliOp by combining duplicates and removing zeros
@@ -404,11 +417,12 @@ class _CA():
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
+            cl_reg = ClassicalRegister(qubits)
         else:
             q_reg = QuantumRegister(N)
+            cl_reg = ClassicalRegister(N)
         pseudo_reg = [QuantumRegister(qubits_per_pseudomode) for i in range(N)]
         ancilla = QuantumRegister(1)
-        cl_reg = ClassicalRegister(N)
 
         #Selecting the backend
         backend = Aer.get_backend('qasm_simulator')
