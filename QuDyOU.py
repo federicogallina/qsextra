@@ -1,9 +1,8 @@
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, execute
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile, assemble, execute
 from qiskit.extensions import HamiltonianGate, UnitaryGate
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.opflow import PauliSumOp, X, Y, Z, PauliTrotterEvolution
-from qiskit.compiler import transpile, assemble
-from qiskit import Aer, execute
+from qiskit.circuit import Parameter
 import numpy as np
 import scipy as sp
 import itertools
@@ -48,14 +47,52 @@ class _CNA():
         '''Working class for Classical Noise Algorithm, algorithmic mapping'''
         self.mapping = mapping
 
-    def __sys_free_evolution(self, H, N, dt):
+    def __CNOT_staircase_method(self, N, dt, Pauli_dict):
+        qubits = int(np.ceil(np.log2(N)))
+        q_reg = QuantumRegister(qubits)
+        qc = QuantumCircuit(q_reg)
+        print(Pauli_dict)
+        for Pauli_string, Pauli_coef in Pauli_dict.items():
+            last_qubit = None
+            inverse_Pauli_string = Pauli_string[::-1] #order of qubits is the inverse of the reading order of the string
+            qc_rotations = QuantumCircuit(q_reg)
+            for npauli, pauli in enumerate(inverse_Pauli_string):
+                if pauli == 'X':
+                    qc_rotations.h(npauli)
+                elif pauli == 'Y':
+                    qc_rotations.h(npauli)
+                    qc_rotations.rz(np.pi/2, npauli)
+            qc_stairs = QuantumCircuit(q_reg)
+            for npauli, pauli in enumerate(inverse_Pauli_string):
+                if pauli != 'I':
+                    last_qubit = npauli
+                    finder = False
+                    index = npauli + 1
+                    while finder == False and index < qubits:
+                        if inverse_Pauli_string[index] == 'I':
+                            index = index + 1
+                        else:
+                            finder = True
+                            qc_stairs.cx(npauli, index)
+            if last_qubit != None:
+                qc.compose(qc_rotations,inplace=True)
+                qc.compose(qc_stairs,inplace=True)
+                qc.rz(Pauli_coef * dt, last_qubit)
+                qc.compose(qc_stairs.inverse(),inplace=True)
+                qc.compose(qc_rotations.inverse(),inplace=True)
+        print(qc.draw())
+        return qc
+
+    def __sys_free_evolution(self, H, N, dt, backend):
+        energy_params = [Parameter('H{}{}'.format(i,i)) for i in range(N)]
+
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
             qc = QuantumCircuit(q_reg)
-            H = np.pad(H, ((0,qubits-N), (0,qubits-N)), mode='constant', constant_values=0)
+            H = np.pad(H, ((0,2**qubits-N), (0,2**qubits-N)), mode='constant', constant_values=0)
             sys_encoded = []
-            projectors_dict = {}
+            site_energies_dict = {}
             for index in range(N):
                 sys_encoded.append('{:b}'.format(index).zfill(qubits)) #Creating a list with the bit strings representing the sites of the system
                 #Creating the Pauli strings corresponding to the projectors
@@ -67,14 +104,13 @@ class _CNA():
                 Pauli_strings = list(itertools.product(*Pauli_ops))
                 Pauli_strings = [''.join(Pauli_strings[i]) for i in range(len(Pauli_strings))]
                 Pauli_coefs_comb = list(itertools.product(*Pauli_coefs))
-                Pauli_coefs_comb = [H[index,index]*prod(Pauli_coefs_comb[i]) for i in range(len(Pauli_coefs_comb))]
+                Pauli_coefs_comb = [energy_params[index]*prod(Pauli_coefs_comb[i]) for i in range(len(Pauli_coefs_comb))]
                 for i, Pauli_string in enumerate(Pauli_strings):
                     try:
-                        projectors_dict[Pauli_string] = projectors_dict[Pauli_string] + Pauli_coefs_comb[i]
+                        site_energies_dict[Pauli_string] = site_energies_dict[Pauli_string] + Pauli_coefs_comb[i]
                     except:
-                        projectors_dict[Pauli_string] = Pauli_coefs_comb[i]
-            projectors_op = PauliTrotterEvolution().convert((PauliSumOp(SparsePauliOp(list(projectors_dict.keys()),coeffs=list(projectors_dict.values()))) * dt).exp_i())
-            qc.compose(projectors_op.to_circuit(),range(qubits),inplace=True)
+                        site_energies_dict[Pauli_string] = Pauli_coefs_comb[i]
+            qc.compose(self.__CNOT_staircase_method(N, dt, site_energies_dict),inplace=True)
 
             interactions_dict = {}
             for index in range(N-1):
@@ -105,17 +141,19 @@ class _CNA():
             q_reg = QuantumRegister(N)
             qc = QuantumCircuit(q_reg)
             for i in range(N):
-                qc.rz(-H[i,i]*dt,q_reg[i])
+                qc.rz(-energy_params[i]*dt,q_reg[i])
             for i in range(N-1):
                 for j in range(i+1,N):
                     if H[i,j] != 0:
                         qc.rxx(H[i,j]*dt,q_reg[i],q_reg[j])
                         qc.ryy(H[i,j]*dt,q_reg[i],q_reg[j])
+            
+        qc = transpile(qc, backend=backend)
         
-        return qc
+        return qc, energy_params
     
     def fluctuation_update(self, H_fluc, rand_increment, tau, dt):
-        H_fluc = H_fluc*np.exp(-dt/tau)+np.diag(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
+        H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
         return H_fluc
 
     def solve(self, H, N, dt, t_max, tau, Gamma, shots):
@@ -132,50 +170,50 @@ class _CNA():
 
         #Create the time list and the list (of lists) that will contain the values of the populations
         tlist = np.arange(0,t_max+dt,dt)
-        populations = np.zeros(len(tlist),N)
+        populations = np.zeros([len(tlist),N])
 
         #Creating the quanutm circuits and initializing the circuit to the first site (in case of the algorithmic mapping no extra actions are needed)
-        qc = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+        qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
         if self.mapping == 'physical':
-            qc.x(0)
+            qc_lead.x(0)
 
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
 
+        qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt, backend)
+
         for traj in range(shots):
             qcs = []
-            H_fluc = np.diag(random_increments[:,0,traj])
+            H_fluc = np.array(random_increments[:,0,traj])
 
             for nt, t in enumerate(tlist):
-                qc_copy = qc.copy(name = 'circuit_{}'.format(nt))
+                qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
                 qc_copy.measure(q_reg,cl_reg)
                 qcs.append(qc_copy)
-                qc.compose(self.__sys_free_evolution(H + H_fluc, N, dt), inplace=True)
+                energies = np.diag(H) + H_fluc
+                qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
                 H_fluc = self.fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
             
+            print('Fase 1')
+
             #Solving the circuits
-            transpiled_qcs = transpile(qcs, backend=backend)
-            qobjs = assemble(transpiled_qcs, backend=backend)
-            options = {'max_parallel_threads':0, 'max_parallel_experiments':0}
+            qobjs = assemble(qcs, backend=backend)
+            options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
             job_info = backend.run(qobjs, shots = 1, options = options)
 
             #Getting results
-            for ntq, transpiled_qc in enumerate(transpiled_qcs):
-                counts = job_info.result().get_counts(transpiled_qc)
+            for nq, qc in enumerate(qcs):
+                counts = job_info.result().get_counts(qc)
                 for i in range(N):
                     try:
-                        populations[ntq,i] = (populations[ntq,i] + counts['{:b}'.format(2**i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntq,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
+                        populations[nq,i] = (populations[nq,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[nq,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
                     except:
                         pass
 
+            if traj%100 == 0:
+                print('Ancora ', shots-traj-1)
+
         return populations
-
-class _CNA_phys():
-    def __init__(self):
-        '''Working class for Classical Noise Algorithm, algorithmic mapping'''
-
-    def solve(H, N, dt, t_max, tau, Gamma, shots):
-        return 0
 
 class _CA():
     def __init__(self, mapping):
@@ -251,9 +289,9 @@ class _CA():
     def __Pseudomodes_ops(self, qubits_per_pseudomode):
         #Grey-code encoding for a pseudomode. Every pseudomode will be taken with the same encoding
         pseudo_encoded = []
-        for i in range(0, 1<<qubits_per_pseudomode):
+        for i in range(1 << qubits_per_pseudomode):
             gray=i^(i>>1)
-            pseudo_encoded.append("{0:0{1}b}".format(gray,qubits_per_pseudomode))
+            pseudo_encoded.append('{0:0{1}b}'.format(gray,qubits_per_pseudomode))
         
         #Creating dictionaries for c, c^dagger and c+c^dagger operators of the pseudomodes
         c_dagger_dict = {}
@@ -278,7 +316,7 @@ class _CA():
                     c_dagger_dict[Pauli_string] = Pauli_coefs_comb[i]
         
         c_dict = {}
-        for index in range(1,2**qubits_per_pseudomode):
+        for index in range(1, 1 << qubits_per_pseudomode):
             Pauli_ops = []
             Pauli_coefs = []
             for i in range(qubits_per_pseudomode):
@@ -329,7 +367,7 @@ class _CA():
                 qubit_list.append(q_reg[i])
                 qc.compose(pseudo_sys_op.to_circuit(),qubit_list,inplace=True)
 
-    def __Trotter_step(self, H, N, dt, tau, Gamma, qubits_per_pseudomode):
+    def __Trotter_step(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -356,6 +394,9 @@ class _CA():
             qubit_list.append(ancilla[0])
             qc.compose(pseudo_ancilla_op.to_circuit(),qubit_list,inplace=True)
             qc.reset(ancilla[0])
+        
+        qc = transpile(qc, backend=backend)
+
         return qc
 
     def solve(self, H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode):
@@ -377,35 +418,34 @@ class _CA():
         populations = [[] for i in range(N)]
 
         #Creating the quanutm circuits
-        qc = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
-        qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode) #Incremental block of the evolution
+        qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
+        qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend) #Incremental block of the evolution
         
         #Initializing the circuit to the first site (in case of the algorithmic mapping no actions are needed)
         if self.mapping == 'physical':
-            qc.x(0)
+            qc_lead.x(0)
 
         #Creating a list with all the quantum circuit for a parallelized evaluation
         qcs = []
 
         #Propagating in time
         for nt, t in enumerate(tlist):
-            qc_copy = qc.copy(name = 'circuit_{}'.format(nt))
+            qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
             qc_copy.measure(q_reg,cl_reg)
             qcs.append(qc_copy)
-            qc.compose(qc_Trotter_step, inplace=True)
+            qc_lead.compose(qc_Trotter_step, inplace=True)
 
         #Solving the circuits
-        transpiled_qcs = transpile(qcs, backend=backend)
-        qobjs = assemble(transpiled_qcs, backend=backend)
+        qobjs = assemble(qcs, backend=backend)
         options = {'max_parallel_threads':0, 'max_parallel_shots':0}
         job_info = backend.run(qobjs, shots = shots, options = options)
 
         #Getting results
-        for transpiled_qc in transpiled_qcs:
-            counts = job_info.result().get_counts(transpiled_qc)
+        for qc in qcs:
+            counts = job_info.result().get_counts(qc)
             for i in range(N):
                 try:
-                    populations[i].append(counts['{:b}'.format(2**i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
+                    populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
                 except:
                     populations[i].append(0)
 
