@@ -7,63 +7,63 @@ import itertools
 from math import prod
 
 
-class OU():
+def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
+    '''Quantum algorithm to compute the dynamics of the open system. Return the populations of the target site during time.
+    Input parametes:
+    - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
+    - t_max [float, double]: maximum time of the dynamics (included)    
+    - dt [float, double]: time step of the dynamics
+    - Gamma [float, double]: equivalent noise strength
+    - tau [float, double]: memory time of the fluctuations
+    - shots [int]: number of shots
+    - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
+    - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
+    - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
+    '''
     
-    def evolve(self, Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
-        '''Quantum algorithm to compute the dynamics of the open system. Return the populations of the target site during time.
-        Input parametes:
-        - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
-        - t_max [float, double]: maximum time of the dynamics (included)    
-        - dt [float, double]: time step of the dynamics
-        - Gamma [float, double]: equivalent noise strength
-        - tau [float, double]: memory time of the fluctuations
-        - shots [int]: number of shots
-        - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
-        - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
-        - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
-        '''
-        
-        if method not in ['classical noise', 'collision model']:
-            raise Exception('Method must be "classical noise" or "collision model"')
+    if method not in ['classical noise', 'collision model']:
+        raise Exception('Method must be "classical noise" or "collision model"')
 
-        if mapping not in ['algorithmic', 'physical']:
-            raise Exception('Method must be "algorithmic" or "physical"')
+    if mapping not in ['algorithmic', 'physical']:
+        raise Exception('Method must be "algorithmic" or "physical"')
 
-        H = np.array(Hamiltonian)
-        if H != H.conj().T or H.shape[0] != H.shape[1]:
-            raise Exception('Hamiltonian must be an Hermitian square matrix')
-        N = H.shape[0]
+    H = np.array(Hamiltonian)
+    if H != H.conj().T or H.shape[0] != H.shape[1]:
+        raise Exception('Hamiltonian must be an Hermitian square matrix')
+    N = H.shape[0]
 
-        if method == 'classical noise':
-            return _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots)
-        if method == 'collision model':
-            return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+    if method == 'classical noise':
+        return _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots)
+    if method == 'collision model':
+        return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+
+def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1):
+    '''Returns the quantum circuit for a time step evolution.
+    Input parametes:
+    - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
+    - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
+    - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
+    - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
+    - Gamma [float, double]: equivalent noise strength
+    - tau [float, double]: memory time of the fluctuations
+    - dt [float, double]: time step of the dynamics
+    '''
     
-    def minimal_circuit(self, Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1):
-        '''Returns the quantum circuit for a time step evolution.
-        Input parametes:
-        - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
-        - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
-        - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
-        - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
-        - Gamma [float, double]: equivalent noise strength
-        - tau [float, double]: memory time of the fluctuations
-        - dt [float, double]: time step of the dynamics
-        '''
-        
-        if method not in ['classical noise', 'collision model']:
-            raise Exception('Method must be "classical noise" or "collision model"')
+    if method not in ['classical noise', 'collision model']:
+        raise Exception('Method must be "classical noise" or "collision model"')
 
-        if mapping not in ['algorithmic', 'physical']:
-            raise Exception('Method must be "algorithmic" or "physical"')
+    if mapping not in ['algorithmic', 'physical']:
+        raise Exception('Method must be "algorithmic" or "physical"')
 
-        H = np.array(Hamiltonian)
-        N = self.H.shape[0]
+    H = np.array(Hamiltonian)
+    if H != H.conj().T or H.shape[0] != H.shape[1]:
+        raise Exception('Hamiltonian must be an Hermitian square matrix')
+    N = H.shape[0]
 
-        if method == 'classical noise':
-            return _CNA(mapping).minimal_circuit(H, N, dt, backend)
-        if method == 'collision model':
-            return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
+    if method == 'classical noise':
+        return _CNA(mapping).minimal_circuit(H, N, dt, backend)
+    if method == 'collision model':
+        return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
 
 class _CNA():
     def __init__(self, mapping):
