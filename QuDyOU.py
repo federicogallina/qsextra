@@ -7,18 +7,12 @@ import itertools
 from math import prod
 
 
-class system():
-    def __init__(self, Hamiltonian):
-        '''Create the system object with basic information.
-        Input:
-        - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
-        '''
-        self.H = np.array(Hamiltonian)
-        self.N = self.H.shape[0]
+class OU():
     
-    def evolve(self, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
+    def evolve(self, Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
         '''Quantum algorithm to compute the dynamics of the open system. Return the populations of the target site during time.
         Input parametes:
+        - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
         - t_max [float, double]: maximum time of the dynamics (included)    
         - dt [float, double]: time step of the dynamics
         - Gamma [float, double]: equivalent noise strength
@@ -35,10 +29,41 @@ class system():
         if mapping not in ['algorithmic', 'physical']:
             raise Exception('Method must be "algorithmic" or "physical"')
 
+        H = np.array(Hamiltonian)
+        if H != H.conj().T or H.shape[0] != H.shape[1]:
+            raise Exception('Hamiltonian must be an Hermitian square matrix')
+        N = H.shape[0]
+
         if method == 'classical noise':
-            return _CNA(mapping).solve(self.H, self.N, dt, t_max, tau, Gamma, shots)
+            return _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots)
         if method == 'collision model':
-            return _CA(mapping).solve(self.H, self.N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+            return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+    
+    def minimal_circuit(self, Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1):
+        '''Returns the quantum circuit for a time step evolution.
+        Input parametes:
+        - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
+        - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
+        - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
+        - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
+        - Gamma [float, double]: equivalent noise strength
+        - tau [float, double]: memory time of the fluctuations
+        - dt [float, double]: time step of the dynamics
+        '''
+        
+        if method not in ['classical noise', 'collision model']:
+            raise Exception('Method must be "classical noise" or "collision model"')
+
+        if mapping not in ['algorithmic', 'physical']:
+            raise Exception('Method must be "algorithmic" or "physical"')
+
+        H = np.array(Hamiltonian)
+        N = self.H.shape[0]
+
+        if method == 'classical noise':
+            return _CNA(mapping).minimal_circuit(H, N, dt, backend)
+        if method == 'collision model':
+            return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
 
 class _CNA():
     def __init__(self, mapping):
@@ -147,7 +172,7 @@ class _CNA():
         
         return qc, energy_params
     
-    def fluctuation_update(self, H_fluc, rand_increment, tau, dt):
+    def __fluctuation_update(self, H_fluc, rand_increment, tau, dt):
         H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
         return H_fluc
 
@@ -187,7 +212,7 @@ class _CNA():
                 qcs.append(qc_copy)
                 energies = np.diag(H) + H_fluc
                 qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                H_fluc = self.fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
+                H_fluc = self.__fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
 
             #Solving the circuits
             qobjs = assemble(qcs, backend=backend)
@@ -204,6 +229,11 @@ class _CNA():
                         pass
 
         return populations
+
+    def minimal_circuit(self, H, N, dt, backend):
+        qc, params = self.__sys_free_evolution(H, N, dt, backend)
+        qc = transpile(qc, backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+        return qc
 
 class _CA():
     def __init__(self, mapping):
@@ -464,3 +494,7 @@ class _CA():
                     populations[i].append(0)
 
         return populations
+
+    def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend):
+        qc = transpile(self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+        return qc
