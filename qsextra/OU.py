@@ -182,9 +182,10 @@ class _CNA():
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
+            cl_reg = ClassicalRegister(qubits)
         else:
             q_reg = QuantumRegister(N)
-        cl_reg = ClassicalRegister(N)
+            cl_reg = ClassicalRegister(N)
 
         #Selecting the backend
         backend = Aer.get_backend('qasm_simulator')
