@@ -28,7 +28,7 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
         raise Exception('Method must be "algorithmic" or "physical"')
 
     H = np.array(Hamiltonian)
-    if H != H.conj().T or H.shape[0] != H.shape[1]:
+    if (H != H.conj().T).all() or H.shape[0] != H.shape[1]:
         raise Exception('Hamiltonian must be an Hermitian square matrix')
     N = H.shape[0]
 
@@ -37,7 +37,7 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
     if method == 'collision model':
         return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
 
-def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1):
+def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1, transpiled = True):
     '''Returns the quantum circuit for a time step evolution.
     Input parametes:
     - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
@@ -47,6 +47,7 @@ def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', b
     - Gamma [float, double]: equivalent noise strength
     - tau [float, double]: memory time of the fluctuations
     - dt [float, double]: time step of the dynamics
+    - transpile [boolean]: if True returne the transpiled circuit
     '''
     
     if method not in ['classical noise', 'collision model']:
@@ -56,14 +57,14 @@ def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', b
         raise Exception('Method must be "algorithmic" or "physical"')
 
     H = np.array(Hamiltonian)
-    if H != H.conj().T or H.shape[0] != H.shape[1]:
+    if (H != H.conj().T).all() or H.shape[0] != H.shape[1]:
         raise Exception('Hamiltonian must be an Hermitian square matrix')
     N = H.shape[0]
 
     if method == 'classical noise':
-        return _CNA(mapping).minimal_circuit(H, N, dt, backend)
+        return _CNA(mapping).minimal_circuit(H, N, dt, backend, transpiled)
     if method == 'collision model':
-        return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
+        return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled)
 
 class _CNA():
     def __init__(self, mapping):
@@ -230,9 +231,10 @@ class _CNA():
 
         return populations
 
-    def minimal_circuit(self, H, N, dt, backend):
+    def minimal_circuit(self, H, N, dt, backend, transpiled):
         qc, params = self.__sys_free_evolution(H, N, dt, backend)
-        qc = transpile(qc, backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+        if transpiled == True:
+            qc = transpile(qc, backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
         return qc
 
 class _CA():
@@ -495,6 +497,9 @@ class _CA():
 
         return populations
 
-    def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend):
-        qc = transpile(self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+    def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
+        if transpiled == True:
+            qc = transpile(self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+        else:
+            qc = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
         return qc
