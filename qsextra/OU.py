@@ -82,8 +82,7 @@ class _CNA():
                 if pauli == 'X':
                     qc_rotations.h(npauli)
                 elif pauli == 'Y':
-                    qc_rotations.h(npauli)
-                    qc_rotations.rz(np.pi/2, npauli)
+                    qc_rotations.rx(np.pi/2, npauli)
             qc_stairs = QuantumCircuit(q_reg)
             for npauli, pauli in enumerate(Pauli_string):
                 if pauli != 'I':
@@ -310,7 +309,7 @@ class _CA():
         return qc
 
     def __Pseudomodes_ops(self, qubits_per_pseudomode):
-        #Grey-code encoding for a pseudomode. Every pseudomode will be taken with the same encoding
+        #Gray-code encoding for a pseudomode. Every pseudomode will be taken with the same encoding
         pseudo_encoded = []
         for i in range(1 << qubits_per_pseudomode):
             gray=i^(i>>1)
