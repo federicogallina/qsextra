@@ -7,18 +7,16 @@ import itertools
 from math import prod
 
 
-def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
+def evolve(Hamiltonian, t_max, dt, gamma, shots=10000, method='classical noise', mapping='physical'):
     '''Quantum algorithm to compute the dynamics of the open system. Return the populations of the target site during time.
     Input parametes:
     - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
     - t_max [float, double]: maximum time of the dynamics (included)    
     - dt [float, double]: time step of the dynamics
-    - Gamma [float, double]: equivalent noise strength
-    - tau [float, double]: memory time of the fluctuations
+    - gamma [float, double]: noise strength
     - shots [int]: number of shots
     - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
     - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
-    - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
     '''
     
     if method not in ['classical noise', 'collision model']:
@@ -33,19 +31,17 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
     N = H.shape[0]
 
     if method == 'classical noise':
-        return _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots)
+        return _CNA(mapping).solve(H, N, dt, t_max, gamma, shots)
     if method == 'collision model':
-        return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+        return _CA(mapping).solve(H, N, dt, t_max, gamma, shots)
 
-def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1, transpiled = True):
+def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, gamma = 1, dt = 1, transpiled = True):
     '''Returns the quantum circuit for a time step evolution.
     Input parametes:
     - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
     - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
     - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
-    - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
-    - Gamma [float, double]: equivalent noise strength
-    - tau [float, double]: memory time of the fluctuations
+    - gamma [float, double]: noise strength
     - dt [float, double]: time step of the dynamics
     - transpile [boolean]: if True returne the transpiled circuit
     '''
@@ -64,7 +60,7 @@ def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', b
     if method == 'classical noise':
         return _CNA(mapping).minimal_circuit(H, N, dt, backend, transpiled)
     if method == 'collision model':
-        return _CA(mapping).minimal_circuit(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled)
+        return _CA(mapping).minimal_circuit(H, N, dt, gamma, backend, transpiled)
 
 class _CNA():
     def __init__(self, mapping):
@@ -172,11 +168,7 @@ class _CNA():
         
         return qc, energy_params
     
-    def __fluctuation_update(self, H_fluc, rand_increment, tau, dt):
-        H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
-        return H_fluc
-
-    def solve(self, H, N, dt, t_max, tau, Gamma, shots):
+    def solve(self, H, N, dt, t_max, tau, gamma, shots):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -199,7 +191,7 @@ class _CNA():
             qc_lead.x(0)
 
         #Creating the random numbers for the energy fluctuations
-        random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
+        random_increments = np.sqrt(gamma/dt)*np.random.randn(N,len(tlist),shots)
 
         qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt, backend)
 
@@ -211,9 +203,8 @@ class _CNA():
                 qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
                 qc_copy.measure(q_reg,cl_reg)
                 qcs.append(qc_copy)
-                energies = np.diag(H) + H_fluc
+                energies = np.diag(H) + random_increments[:,nt,traj]
                 qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                H_fluc = self.__fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
 
             #Solving the circuits
             qobjs = assemble(qcs, backend=backend)
@@ -308,70 +299,13 @@ class _CA():
         
         return qc
 
-    def __Pseudomodes_ops(self, qubits_per_pseudomode):
-        #Gray-code encoding for a pseudomode. Every pseudomode will be taken with the same encoding
-        pseudo_encoded = []
-        for i in range(1 << qubits_per_pseudomode):
-            gray=i^(i>>1)
-            pseudo_encoded.append('{0:0{1}b}'.format(gray,qubits_per_pseudomode))
-        
-        #Creating dictionaries for c, c^dagger and c+c^dagger operators of the pseudomodes
-        c_dagger_dict = {}
-        for index in range(2**qubits_per_pseudomode-1):
-            Pauli_ops = []
-            Pauli_coefs = []
-            for i in range(qubits_per_pseudomode):
-                if pseudo_encoded[index + 1][i] == pseudo_encoded[index][i]:
-                    Pauli_ops.append(['I','Z'])
-                    Pauli_coefs.append([1./2,1./2]) if pseudo_encoded[index + 1][i] == '0' else Pauli_coefs.append([1./2,-1./2])
-                else:
-                    Pauli_ops.append(['X','Y'])
-                    Pauli_coefs.append([1/2,1.j/2]) if pseudo_encoded[index + 1][i] == '0' else Pauli_coefs.append([1./2,-1.j/2])
-            Pauli_strings = list(itertools.product(*Pauli_ops))
-            Pauli_strings = [''.join(Pauli_strings[i]) for i in range(len(Pauli_strings))]
-            Pauli_coefs_comb = list(itertools.product(*Pauli_coefs))
-            Pauli_coefs_comb = [np.sqrt(index+1)*prod(Pauli_coefs_comb[i]) for i in range(len(Pauli_coefs_comb))]
-            for i, Pauli_string in enumerate(Pauli_strings):
-                try:
-                    c_dagger_dict[Pauli_string] = c_dagger_dict[Pauli_string] + Pauli_coefs_comb[i]
-                except:
-                    c_dagger_dict[Pauli_string] = Pauli_coefs_comb[i]
-        
-        c_dict = {}
-        for index in range(1, 1 << qubits_per_pseudomode):
-            Pauli_ops = []
-            Pauli_coefs = []
-            for i in range(qubits_per_pseudomode):
-                if pseudo_encoded[index -1][i] == pseudo_encoded[index][i]:
-                    Pauli_ops.append(['I','Z'])
-                    Pauli_coefs.append([1./2,1./2]) if pseudo_encoded[index - 1][i] == '0' else Pauli_coefs.append([1./2,-1./2])
-                else:
-                    Pauli_ops.append(['X','Y'])
-                    Pauli_coefs.append([1/2,1.j/2]) if pseudo_encoded[index - 1][i] == '0' else Pauli_coefs.append([1./2,-1.j/2])
-            Pauli_strings = list(itertools.product(*Pauli_ops))
-            Pauli_strings = [''.join(Pauli_strings[i]) for i in range(len(Pauli_strings))]
-            Pauli_coefs_comb = list(itertools.product(*Pauli_coefs))
-            Pauli_coefs_comb = [np.sqrt(index)*prod(Pauli_coefs_comb[i]) for i in range(len(Pauli_coefs_comb))]
-            for i, Pauli_string in enumerate(Pauli_strings):
-                try:
-                    c_dict[Pauli_string] = c_dict[Pauli_string] + Pauli_coefs_comb[i]
-                except:
-                    c_dict[Pauli_string] = Pauli_coefs_comb[i]
-        
-        c_plus_c_dagger_dict = {}
-        for key in c_dict:
-            if c_dict[key] != -c_dagger_dict[key]:
-                c_plus_c_dagger_dict[key] = c_dict[key] + c_dagger_dict[key]
-        
-        return c_dagger_dict, c_dict, c_plus_c_dagger_dict
-
-    def __sys_pseudo_interaction(self, N, dt, Gamma, tau, c_plus_c_dagger_dict, qubits_per_pseudomode):
+    def __sys_anc_interaction(self, N, dt, gamma):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
-            pseudo_reg = [QuantumRegister(qubits_per_pseudomode,name='pseudomode_{}'.format(i)) for i in range(N)]
-            qc = QuantumCircuit(q_reg, *pseudo_reg)
+            ancilla = QuantumRegister(1,name='ancilla')
+            qc = QuantumCircuit(q_reg, ancilla)
             sys_encoded = []
             for index in range(N):
                 sys_encoded.append('{:b}'.format(index).zfill(qubits)) #Creating a list with the bit strings representing the sites of the system
@@ -387,63 +321,48 @@ class _CA():
                 Pauli_coefs_comb_sys = [prod(Pauli_coefs_comb_sys[i]) for i in range(len(Pauli_coefs_comb_sys))]
                 Pauli_interaction_dict = {}
                 for i, Pauli_string in enumerate(Pauli_strings_sys):
-                    for Pauli_string_pseudo, Pauli_coef_pseudo in c_plus_c_dagger_dict.items():
-                        Pauli_interaction_dict[Pauli_string + Pauli_string_pseudo] = Pauli_coefs_comb_sys[i] * Pauli_coef_pseudo
+                    Pauli_interaction_dict[Pauli_string + 'X'] = Pauli_coefs_comb_sys[i] * np.sqrt(gamma/dt)
                 pseudo_sys_op = PauliTrotterEvolution().convert((PauliSumOp(SparsePauliOp(list(Pauli_interaction_dict.keys()), coeffs=list(Pauli_interaction_dict.values()))) * dt).exp_i())
-                qubit_list = pseudo_reg[index][0:qubits_per_pseudomode]
+                qubit_list = [ancilla[0]]
                 qubit_list.extend(q_reg[0:qubits])
                 qc.compose(pseudo_sys_op.to_circuit(),qubit_list,inplace=True)
+                qc.reset(ancilla[0])
 
         else:
             q_reg = QuantumRegister(N)
-            pseudo_reg = [QuantumRegister(qubits_per_pseudomode,name='pseudomode_{}'.format(i)) for i in range(N)]
-            qc = QuantumCircuit(q_reg, *pseudo_reg)
-            c_plus_c_dagger = PauliSumOp(SparsePauliOp(list(c_plus_c_dagger_dict.keys()),coeffs=list(c_plus_c_dagger_dict.values())))
-            pseudo_sys_Hamiltonian = - np.sqrt(Gamma/tau) / 2 * Z ^ c_plus_c_dagger
-            pseudo_sys_op = PauliTrotterEvolution().convert((pseudo_sys_Hamiltonian * dt).exp_i())
+            ancilla = QuantumRegister(1,name='ancilla')
+            qc = QuantumCircuit(q_reg, ancilla)
+            sys_ancilla_Hamiltonian = np.sqrt(gamma/4/dt) * X ^ Z
+            sys_ancilla_op = PauliTrotterEvolution().convert((sys_ancilla_Hamiltonian * dt).exp_i())
             for i in range(N):
-                qubit_list = pseudo_reg[i][0:qubits_per_pseudomode]
+                qubit_list = [ancilla[0]]
                 qubit_list.append(q_reg[i])
-                qc.compose(pseudo_sys_op.to_circuit(),qubit_list,inplace=True)
+                qc.compose(sys_ancilla_op.to_circuit(),qubit_list,inplace=True)
+                qc.reset(ancilla[0])
 
         return qc
 
-    def __Trotter_step(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend):
+    def __Trotter_step(self, H, N, dt, gamma, backend):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
             q_reg = QuantumRegister(qubits)
         else:
             q_reg = QuantumRegister(N)
-        pseudo_reg = [QuantumRegister(qubits_per_pseudomode,name='pseudomode_{}'.format(i)) for i in range(N)]
         ancilla = QuantumRegister(1,name='ancilla')
-        qc = QuantumCircuit(q_reg, *pseudo_reg, ancilla)
+        qc = QuantumCircuit(q_reg, ancilla)
 
         #System self-Hamiltonian free propagation
         qc.compose(self.__sys_free_evolution(H,N,dt),q_reg,inplace=True)
 
-        #Pseudomodes operators
-        c_dagger_dict, c_dict, c_plus_c_dagger_dict = self.__Pseudomodes_ops(qubits_per_pseudomode)
-        #Converting dictionaries to PauliOp objects
-        c_dagger = PauliSumOp(SparsePauliOp(list(c_dagger_dict.keys()),coeffs=list(c_dagger_dict.values())))
-        c = PauliSumOp(SparsePauliOp(list(c_dict.keys()),coeffs=list(c_dict.values())))
-        #Pseudomodes-System interaction
-        qc.compose(self.__sys_pseudo_interaction(N, dt, Gamma, tau, c_plus_c_dagger_dict, qubits_per_pseudomode), inplace=True)
         #Pseudomodes-ancilla collisions
-        pseudo_ancilla_Hamiltonian = ((X + (1.j * Y)) ^ c_dagger) + ((X - (1.j * Y)) ^ c)
-        pseudo_ancilla_Hamiltonian = pseudo_ancilla_Hamiltonian.reduce() #Simplify the primitive SparsePauliOp by combining duplicates and removing zeros
-        pseudo_ancilla_op = PauliTrotterEvolution().convert((pseudo_ancilla_Hamiltonian * np.sqrt(2/tau/dt) / 2 *dt).exp_i())
-        for i in range(N):
-            qubit_list = pseudo_reg[i][0:qubits_per_pseudomode]
-            qubit_list.append(ancilla[0])
-            qc.compose(pseudo_ancilla_op.to_circuit(),qubit_list,inplace=True)
-            qc.reset(ancilla[0])
+        qc.compose(self.__sys_anc_interaction(N, dt, gamma),inplace=True)
         
         qc = transpile(qc, backend=backend)
 
         return qc
 
-    def solve(self, H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode):
+    def solve(self, H, N, dt, t_max, gamma, shots):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -452,7 +371,6 @@ class _CA():
         else:
             q_reg = QuantumRegister(N)
             cl_reg = ClassicalRegister(N)
-        pseudo_reg = [QuantumRegister(qubits_per_pseudomode) for i in range(N)]
         ancilla = QuantumRegister(1)
 
         #Selecting the backend
@@ -463,8 +381,8 @@ class _CA():
         populations = [[] for i in range(N)]
 
         #Creating the quanutm circuits
-        qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
-        qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend) #Incremental block of the evolution
+        qc_lead = QuantumCircuit(q_reg, ancilla, cl_reg) #Lead of the evlution
+        qc_Trotter_step = self.__Trotter_step(H, N, dt, gamma, backend) #Incremental block of the evolution
         
         #Initializing the circuit to the first site (in case of the algorithmic mapping no actions are needed)
         if self.mapping == 'physical':
@@ -496,9 +414,9 @@ class _CA():
 
         return populations
 
-    def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
+    def minimal_circuit(self, H, N, dt, gamma, backend, transpiled):
         if transpiled == True:
-            qc = transpile(self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+            qc = transpile(self.__Trotter_step(H, N, dt, gamma, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
         else:
-            qc = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend)
+            qc = self.__Trotter_step(H, N, dt, gamma, backend)
         return qc
