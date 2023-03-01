@@ -153,19 +153,17 @@ class _CNA():
         tlist = np.arange(0,t_max+dt,dt)
         populations = np.zeros([len(tlist),N])
 
-        #Creating the quanutm circuits and initializing the circuit to the first site (in case of the algorithmic mapping no extra actions are needed)
-        qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
-        if self.mapping == 'physical':
-            qc_lead.x(0)
-
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(gamma/dt)*np.random.randn(N,len(tlist),shots)
 
         qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt)
         qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
 
+        qcs = []
         for traj in range(shots):
-            qcs = []
+            qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+            if self.mapping == 'physical':
+                qc_lead.x(0)
 
             for nt in range(len(tlist)):
                 if nt > 0:
@@ -176,19 +174,20 @@ class _CNA():
                 qcs.append(qc_copy)
                     
 
-            #Solving the circuits
-            qobjs = assemble(qcs, backend=backend)
-            options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
-            job_info = backend.run(qobjs, shots = 1, options = options)
+        #Solving the circuits
+        qobjs = assemble(qcs, backend=backend)
+        options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
+        job_info = backend.run(qobjs, shots = 1, options = options)
 
-            #Getting results
-            for nq, qc in enumerate(qcs):
-                counts = job_info.result().get_counts(qc)
-                for i in range(N):
-                    try:
-                        populations[nq,i] = (populations[nq,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[nq,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
-                    except:
-                        pass
+        #Getting results
+        for nq, qc in enumerate(qcs):
+            counts = job_info.result().get_counts(qc)
+            ntime = nq%len(tlist)
+            for i in range(N):
+                try:
+                    populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
+                except:
+                    pass
 
         return populations
 

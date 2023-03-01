@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='qsextra',
-    version=0.2,
+    version=0.3,
     author='Federico Gallina',
     author_email='federico.gallina@unipd.it',
     description='Quantum Simulation of Exciton Transport',
