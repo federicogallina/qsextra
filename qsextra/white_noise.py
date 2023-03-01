@@ -36,7 +36,7 @@ def evolve(Hamiltonian, t_max, dt, gamma, shots=10000, method='classical noise',
     if method == 'collision model':
         return _CA(mapping).solve(H, N, dt, t_max, gamma, shots)
 
-def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', backend=None, gamma = 1, dt = 1, transpiled = True):
+def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', gamma = 1, dt = 1, backend=None, transpiled = True):
     '''Returns the quantum circuit for a time step evolution.
     Input parametes:
     - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
@@ -44,6 +44,7 @@ def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', b
     - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
     - gamma [float, double]: noise strength
     - dt [float, double]: time step of the dynamics
+    - backend [IBMQ_backend]: backend used for transpilation
     - transpile [boolean]: if True returne the transpiled circuit
     '''
     
@@ -68,7 +69,7 @@ class _CNA():
         '''Working class for Classical Noise Algorithm, algorithmic mapping'''
         self.mapping = mapping
 
-    def __sys_free_evolution(self, H, N, dt, backend):
+    def __sys_free_evolution(self, H, N, dt):
         energy_params = [Parameter('H{}{}'.format(i,i)) for i in range(N)]
 
         if self.mapping == 'algorithmic':
@@ -132,9 +133,7 @@ class _CNA():
                     if H[i,j] != 0:
                         qc.rxx(H[i,j]*dt,q_reg[i],q_reg[j])
                         qc.ryy(H[i,j]*dt,q_reg[i],q_reg[j])
-            
-        qc = transpile(qc, backend=backend)
-        
+                    
         return qc, energy_params
     
     def solve(self, H, N, dt, t_max, gamma, shots):
@@ -162,7 +161,8 @@ class _CNA():
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(gamma/dt)*np.random.randn(N,len(tlist),shots)
 
-        qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt, backend)
+        qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt)
+        qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
 
         for traj in range(shots):
             qcs = []
@@ -193,7 +193,7 @@ class _CNA():
         return populations
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
-        qc = self.__sys_free_evolution(H, N, dt, backend)[0]
+        qc = self.__sys_free_evolution(H, N, dt)[0]
         if transpiled == True:
             qc = transpile(qc, backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
         return qc
@@ -312,7 +312,7 @@ class _CA():
 
         return qc
 
-    def __Trotter_step(self, H, N, dt, gamma, backend):
+    def __Trotter_step(self, H, N, dt, gamma):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -328,8 +328,6 @@ class _CA():
         #Pseudomodes-ancilla collisions
         qc.compose(self.__sys_anc_interaction(N, dt, gamma),inplace=True)
         
-        qc = transpile(qc, backend=backend)
-
         return qc
 
     def solve(self, H, N, dt, t_max, gamma, shots):
@@ -353,7 +351,8 @@ class _CA():
         #Creating the quanutm circuits
         qc_lead = QuantumCircuit(q_reg, ancilla, cl_reg) #Lead of the evlution
         qc_Trotter_step = self.__Trotter_step(H, N, dt, gamma, backend) #Incremental block of the evolution
-        
+        qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
+
         #Initializing the circuit to the first site (in case of the algorithmic mapping no actions are needed)
         if self.mapping == 'physical':
             qc_lead.x(0)
@@ -362,7 +361,7 @@ class _CA():
         qcs = []
 
         #Propagating in time
-        for nt, t in enumerate(tlist):
+        for nt in range(len(tlist)):
             qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
             qc_copy.measure(q_reg,cl_reg)
             qcs.append(qc_copy)
@@ -386,7 +385,7 @@ class _CA():
 
     def minimal_circuit(self, H, N, dt, gamma, backend, transpiled):
         if transpiled == True:
-            qc = transpile(self.__Trotter_step(H, N, dt, gamma, backend), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
+            qc = transpile(self.__Trotter_step(H, N, dt, gamma), backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
         else:
-            qc = self.__Trotter_step(H, N, dt, gamma, backend)
+            qc = self.__Trotter_step(H, N, dt, gamma)
         return qc
