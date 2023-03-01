@@ -5,6 +5,7 @@ from qiskit.circuit import Parameter
 import numpy as np
 import itertools
 from math import prod
+from qsextra.utils import CNOT_staircase_circuit
 
 
 def evolve(Hamiltonian, t_max, dt, gamma, shots=10000, method='classical noise', mapping='physical'):
@@ -67,38 +68,6 @@ class _CNA():
         '''Working class for Classical Noise Algorithm, algorithmic mapping'''
         self.mapping = mapping
 
-    def __CNOT_staircase_method(self, N, dt, Pauli_dict):
-        qubits = int(np.ceil(np.log2(N)))
-        q_reg = QuantumRegister(qubits)
-        qc = QuantumCircuit(q_reg)
-        for Pauli_string, Pauli_coef in Pauli_dict.items():
-            last_qubit = None
-            qc_rotations = QuantumCircuit(q_reg)
-            for npauli, pauli in enumerate(Pauli_string):
-                if pauli == 'X':
-                    qc_rotations.h(npauli)
-                elif pauli == 'Y':
-                    qc_rotations.rx(np.pi/2, npauli)
-            qc_stairs = QuantumCircuit(q_reg)
-            for npauli, pauli in enumerate(Pauli_string):
-                if pauli != 'I':
-                    last_qubit = npauli
-                    finder = False
-                    index = npauli + 1
-                    while finder == False and index < qubits:
-                        if Pauli_string[index] == 'I':
-                            index = index + 1
-                        else:
-                            finder = True
-                            qc_stairs.cx(npauli, index)
-            if last_qubit != None:
-                qc.compose(qc_rotations,inplace=True)
-                qc.compose(qc_stairs,inplace=True)
-                qc.rz(Pauli_coef * dt, last_qubit)
-                qc.compose(qc_stairs.inverse(),inplace=True)
-                qc.compose(qc_rotations.inverse(),inplace=True)
-        return qc
-
     def __sys_free_evolution(self, H, N, dt, backend):
         energy_params = [Parameter('H{}{}'.format(i,i)) for i in range(N)]
 
@@ -126,7 +95,7 @@ class _CNA():
                         site_energies_dict[Pauli_string] = site_energies_dict[Pauli_string] + Pauli_coefs_comb[i]
                     except:
                         site_energies_dict[Pauli_string] = Pauli_coefs_comb[i]
-            qc.compose(self.__CNOT_staircase_method(N, dt, site_energies_dict),inplace=True)
+            qc.compose(CNOT_staircase_circuit(qubits, dt, site_energies_dict),inplace=True)
 
             interactions_dict = {}
             for index in range(N-1):
@@ -168,7 +137,7 @@ class _CNA():
         
         return qc, energy_params
     
-    def solve(self, H, N, dt, t_max, tau, gamma, shots):
+    def solve(self, H, N, dt, t_max, gamma, shots):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -197,14 +166,15 @@ class _CNA():
 
         for traj in range(shots):
             qcs = []
-            H_fluc = np.array(random_increments[:,0,traj])
 
-            for nt, t in enumerate(tlist):
+            for nt in range(len(tlist)):
+                if nt > 0:
+                    energies = np.diag(H) + np.array(random_increments[:,nt-1,traj])
+                    qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
                 qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
                 qc_copy.measure(q_reg,cl_reg)
                 qcs.append(qc_copy)
-                energies = np.diag(H) + random_increments[:,nt,traj]
-                qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
+                    
 
             #Solving the circuits
             qobjs = assemble(qcs, backend=backend)
@@ -223,7 +193,7 @@ class _CNA():
         return populations
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
-        qc, params = self.__sys_free_evolution(H, N, dt, backend)
+        qc = self.__sys_free_evolution(H, N, dt, backend)[0]
         if transpiled == True:
             qc = transpile(qc, backend=backend, basis_gates=['id', 'rz', 'sx', 'x', 'cx', 'reset'])
         return qc
