@@ -9,7 +9,8 @@ from qsextra.utils import CNOT_staircase_circuit
 
 
 def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
-    '''Quantum algorithm to compute the dynamics of the open system. Return the populations of the target site during time.
+    '''Quantum algorithm to compute the dynamics of the open system.
+
     Input parametes:
     - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
     - t_max [float, double]: maximum time of the dynamics (included)    
@@ -20,6 +21,18 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
     - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
     - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
     - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
+
+    Return
+    ---- if method == 'classical noise' ----
+    List[float]
+        The populations of the target site during time.
+    int
+        The number of trajectories executed.
+    ---- if method == 'collision model' ----
+    List[float]
+        The populations of the target site during time.
+    float
+        Final time.
     '''
     
     if method not in ['classical noise', 'collision model']:
@@ -34,9 +47,19 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
     N = H.shape[0]
 
     if method == 'classical noise':
-        return _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots)
+        populations = []
+        trajectories = 0
+        for pops_iter, trajs_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots):
+            populations = pops_iter
+            trajectories = trajs_iter
+        return populations, trajectories
     if method == 'collision model':
-        return _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode)
+        populations = []
+        final_time = 0
+        for pops_iter, final_time_iter in _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode):
+            populations = pops_iter
+            final_time = final_time_iter
+        return populations, final_time
 
 def minimal_circuit(Hamiltonian, method='classical noise', mapping='physical', qubits_per_pseudomode=1, Gamma = 1, tau = 1, dt = 1, backend=None, transpiled = True):
     '''Returns the quantum circuit for a time step evolution.
@@ -436,6 +459,9 @@ class _CA():
         tlist = np.arange(0,t_max+dt,dt)
         populations = [[] for i in range(N)]
 
+        #To simplify the work divide the dynamics into time chunks of length
+        chunk_len = 100
+
         #Creating the quanutm circuits
         qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
         qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode) #Incremental block of the evolution
@@ -445,31 +471,33 @@ class _CA():
         if self.mapping == 'physical':
             qc_lead.x(0)
 
-        #Creating a list with all the quantum circuit for a parallelized evaluation
-        qcs = []
+        
 
         #Propagating in time
-        for nt in range(len(tlist)):
-            qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-            qc_copy.measure(q_reg,cl_reg)
-            qcs.append(qc_copy)
-            qc_lead.compose(qc_Trotter_step, inplace=True)
+        for nt_chunk in range(0, len(tlist), chunk_len):
+            #Creating a list with all the quantum circuit for a parallelized evaluation
+            qcs = []
+            for nt in range(nt_chunk):
+                qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
+                qc_copy.measure(q_reg,cl_reg)
+                qcs.append(qc_copy)
+                qc_lead.compose(qc_Trotter_step, inplace=True)
 
-        #Solving the circuits
-        qobjs = assemble(qcs, backend=backend)
-        options = {'max_parallel_threads':0, 'max_parallel_shots':0}
-        job_info = backend.run(qobjs, shots = shots, options = options)
+                #Solving the circuits
+                qobjs = assemble(qcs, backend=backend)
+                options = {'max_parallel_threads':0, 'max_parallel_shots':0}
+                job_info = backend.run(qobjs, shots = shots, options = options)
 
-        #Getting results
-        for qc in qcs:
-            counts = job_info.result().get_counts(qc)
-            for i in range(N):
-                try:
-                    populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
-                except:
-                    populations[i].append(0)
+                #Append the results to populations
+                for qc in qcs:
+                    counts = job_info.result().get_counts(qc)
+                    for i in range(N):
+                        try:
+                            populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
+                        except:
+                            populations[i].append(0)
 
-        return populations
+                yield populations, tlist(nt_chunk + nt)
 
     def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
         if transpiled == True:
