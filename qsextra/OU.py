@@ -47,7 +47,8 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
     N = H.shape[0]
 
     if method == 'classical noise':
-        populations = []
+        tlist = np.arange(0,t_max+dt,dt)
+        populations = np.zeros([len(tlist),N])
         trajectories = 0
         for pops_iter, trajs_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots):
             populations = pops_iter
@@ -188,45 +189,50 @@ class _CNA():
         tlist = np.arange(0,t_max+dt,dt)
         populations = np.zeros([len(tlist),N])
 
+        #To simplify the work divide the dynamics into trajectory chunks of length
+        chunk_len = 100
+
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
 
         qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt)
         qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
 
-        qcs = []
-        for traj in range(shots):
-            H_fluc = np.array(random_increments[:,0,traj])
+        
+        for traj_chunk in range(0, shots, chunk_len):
+            qcs = []
+            for traj in range(chunk_len):
+                H_fluc = np.array(random_increments[:, 0, traj_chunk + traj])
 
-            qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
-            if self.mapping == 'physical':
-                qc_lead.x(0)
+                qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+                if self.mapping == 'physical':
+                    qc_lead.x(0)
 
-            for nt in range(len(tlist)):
-                if nt > 0:
-                    energies = np.diag(H) + H_fluc
-                    qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                    H_fluc = self.__fluctuation_update(H_fluc, random_increments[:,nt,traj], tau, dt)
-                qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                qc_copy.measure(q_reg,cl_reg)
-                qcs.append(qc_copy)
+                for nt in range(len(tlist)):
+                    if nt > 0:
+                        energies = np.diag(H) + H_fluc
+                        qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
+                        H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj_chunk + traj], tau, dt)
+                    qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
+                    qc_copy.measure(q_reg,cl_reg)
+                    qcs.append(qc_copy)
 
-        #Solving the circuits
-        qobjs = assemble(qcs, backend=backend)
-        options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
-        job_info = backend.run(qobjs, shots = 1, options = options)
+            #Solving the circuits
+            qobjs = assemble(qcs, backend=backend)
+            options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
+            job_info = backend.run(qobjs, shots = 1, options = options)
 
-        #Getting results
-        for nq, qc in enumerate(qcs):
-            counts = job_info.result().get_counts(qc)
-            ntime = nq%len(tlist)
-            for i in range(N):
-                try:
-                    populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
-                except:
-                    pass
+            #Append the results to populations
+            for nq, qc in enumerate(qcs):
+                counts = job_info.result().get_counts(qc)
+                ntime = nq%len(tlist)
+                for i in range(N):
+                    try:
+                        populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
+                    except:
+                        pass
 
-        return populations
+            yield populations, traj_chunk + chunk_len
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
         qc = self.__sys_free_evolution(H, N, dt)[0]
@@ -471,8 +477,6 @@ class _CA():
         if self.mapping == 'physical':
             qc_lead.x(0)
 
-        
-
         #Propagating in time
         for nt_chunk in range(0, len(tlist), chunk_len):
             #Creating a list with all the quantum circuit for a parallelized evaluation
@@ -483,21 +487,21 @@ class _CA():
                 qcs.append(qc_copy)
                 qc_lead.compose(qc_Trotter_step, inplace=True)
 
-                #Solving the circuits
-                qobjs = assemble(qcs, backend=backend)
-                options = {'max_parallel_threads':0, 'max_parallel_shots':0}
-                job_info = backend.run(qobjs, shots = shots, options = options)
+            #Solving the circuits
+            qobjs = assemble(qcs, backend=backend)
+            options = {'max_parallel_threads':0, 'max_parallel_shots':0}
+            job_info = backend.run(qobjs, shots = shots, options = options)
 
-                #Append the results to populations
-                for qc in qcs:
-                    counts = job_info.result().get_counts(qc)
-                    for i in range(N):
-                        try:
-                            populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
-                        except:
-                            populations[i].append(0)
+            #Append the results to populations
+            for qc in qcs:
+                counts = job_info.result().get_counts(qc)
+                for i in range(N):
+                    try:
+                        populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
+                    except:
+                        populations[i].append(0)
 
-                yield populations, tlist(nt_chunk + nt)
+            yield populations, tlist(nt_chunk + chunk_len - 1)
 
     def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
         if transpiled == True:
