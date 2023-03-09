@@ -155,7 +155,11 @@ class _CNA():
             cl_reg = ClassicalRegister(N)
 
         #Selecting the backend
-        backend = Aer.get_backend('qasm_simulator')
+        backend = Aer.get_backend('qasm_simulator',
+                                  shots = 1,
+                                  max_parallel_threads = 0,
+                                  max_parallel_experiments = 0,
+                                  max_parallel_shots = 1)
 
         #Create the time list and the list (of lists) that will contain the values of the populations
         tlist = np.arange(0,t_max+dt,dt)
@@ -424,7 +428,9 @@ class _CA():
         ancilla = QuantumRegister(1)
 
         #Selecting the backend
-        backend = Aer.get_backend('qasm_simulator')
+        backend = Aer.get_backend('qasm_simulator',
+                                  max_parallel_threads = 0,
+                                  max_parallel_shots = 0)
 
         #Create the time list and the list (of lists) that will contain the values of the populations
         tlist = np.arange(0,t_max+dt,dt)
@@ -432,7 +438,7 @@ class _CA():
 
         #Creating the quanutm circuits
         qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
-        qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode, backend) #Incremental block of the evolution
+        qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode) #Incremental block of the evolution
         qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
 
         #Initializing the circuit to the first site (in case of the algorithmic mapping no actions are needed)
