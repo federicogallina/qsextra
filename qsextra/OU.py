@@ -501,7 +501,7 @@ class _CA():
                     except:
                         populations[i].append(0)
 
-            yield populations, tlist(nt_chunk + chunk_len - 1)
+            yield populations, tlist[nt_chunk + chunk_len - 1]
 
     def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
         if transpiled == True:
