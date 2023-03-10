@@ -5,34 +5,49 @@ from qiskit.circuit import Parameter
 import numpy as np
 import itertools
 from math import prod
-from qsextra.utils import CNOT_staircase_circuit
+from qsextra.utils import cnot_staircase_circuit, Options
+from typing import Union, Literal
 
 
-def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical noise', mapping='physical', qubits_per_pseudomode=1):
+def evolve(Hamiltonian:Union[list[list[float]],np.ndarray],
+           t_max:float,
+           dt:float,
+           Gamma:float,
+           tau:float,
+           method:Literal['classical noise', 'collision model'],
+           mapping:Literal['physical', 'algorithmic'],
+           shots:int = 10000,
+           options: Options = Options()
+           ) -> tuple[list[float], Union[int, float]]:
     '''Quantum algorithm to compute the dynamics of the open system.
 
     Input parametes:
-    - Hamiltonian [list, np.array]: the Hamiltonian of the open system in an algorithmic mapping
-    - t_max [float, double]: maximum time of the dynamics (included)    
-    - dt [float, double]: time step of the dynamics
-    - Gamma [float, double]: equivalent noise strength
-    - tau [float, double]: memory time of the fluctuations
-    - shots [int]: number of shots
-    - method ['classical noise', 'collision model']: quantum algorithm used to compute the dynamics
-    - mapping ['algorithmic', 'physical']: mapping of the system on the qubits
-    - qubits_per_pseudomode [int]: number of qubits to use in the collision model to implement a pseudomode
+    - Hamiltonian: Union[List[float], np.ndarray]
+        The Hamiltonian of the open system in an algorithmic mapping.
+    - t_max: float
+        Maximum time of the dynamics (included).
+    - dt: float
+        Time step of the dynamics.
+    - Gamma: float
+        Equivalent noise strength.
+    - tau: float
+        Memory time of the fluctuations.
+    - method: Literal['classical noise', 'collision model']
+        Quantum algorithm used to compute the dynamics.
+    - mapping: Literal['physical', 'algorithmic']
+        Mapping of the system on the qubits.
+    - shots: int
+        Number of shots.
+    - options: qsextra.utils.Options
+        Extra options for the computation of the dynamics.
 
-    Return
+    Return:
     ---- if method == 'classical noise' ----
-    List[float]
-        The populations of the target site during time.
-    int
-        The number of trajectories executed.
+    Tuple[List[float], int]
+        The populations of the target site during time and the number of trajectories executed.
     ---- if method == 'collision model' ----
-    List[float]
-        The populations of the target site during time.
-    float
-        Final time.
+    Tuple[List[float], float]
+        The populations of the target site during time and the final time.
     '''
     
     if method not in ['classical noise', 'collision model']:
@@ -50,14 +65,14 @@ def evolve(Hamiltonian, t_max, dt, Gamma, tau, shots=10000, method='classical no
         tlist = np.arange(0,t_max+dt,dt)
         populations = np.zeros([len(tlist),N])
         trajectories = 0
-        for pops_iter, trajs_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots):
+        for pops_iter, trajs_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, options):
             populations = pops_iter
             trajectories = trajs_iter
         return populations, trajectories
     if method == 'collision model':
         populations = []
         final_time = 0
-        for pops_iter, final_time_iter in _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode):
+        for pops_iter, final_time_iter in _CA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, options):
             populations = pops_iter
             final_time = final_time_iter
         return populations, final_time
@@ -124,7 +139,7 @@ class _CNA():
                         site_energies_dict[Pauli_string] = site_energies_dict[Pauli_string] + Pauli_coefs_comb[i]
                     except:
                         site_energies_dict[Pauli_string] = Pauli_coefs_comb[i]
-            qc.compose(CNOT_staircase_circuit(qubits, dt, site_energies_dict),inplace=True)
+            qc.compose(cnot_staircase_circuit(qubits, dt, site_energies_dict),inplace=True)
 
             interactions_dict = {}
             for index in range(N-1):
@@ -168,7 +183,7 @@ class _CNA():
         H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
         return H_fluc
 
-    def solve(self, H, N, dt, t_max, tau, Gamma, shots):
+    def solve(self, H, N, dt, t_max, tau, Gamma, shots, options:Options):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -190,7 +205,7 @@ class _CNA():
         populations = np.zeros([len(tlist),N])
 
         #To simplify the work divide the dynamics into trajectory chunks of length
-        chunk_len = 100
+        chunk_len = options.get()['job_chunks']
 
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
@@ -200,39 +215,43 @@ class _CNA():
 
         
         for traj_chunk in range(0, shots, chunk_len):
-            qcs = []
-            for traj in range(chunk_len):
-                H_fluc = np.array(random_increments[:, 0, traj_chunk + traj])
+            try:
+                qcs = []
+                for traj in range(chunk_len):
+                    H_fluc = np.array(random_increments[:, 0, traj_chunk + traj])
 
-                qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
-                if self.mapping == 'physical':
-                    qc_lead.x(0)
+                    qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+                    if self.mapping == 'physical':
+                        qc_lead.x(0)
 
-                for nt in range(len(tlist)):
-                    if nt > 0:
-                        energies = np.diag(H) + H_fluc
-                        qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                        H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj_chunk + traj], tau, dt)
-                    qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                    qc_copy.measure(q_reg, cl_reg)
-                    qcs.append(qc_copy)
+                    for nt in range(len(tlist)):
+                        if nt > 0:
+                            energies = np.diag(H) + H_fluc
+                            qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
+                            H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj_chunk + traj], tau, dt)
+                        qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
+                        qc_copy.measure(q_reg, cl_reg)
+                        qcs.append(qc_copy)
 
-            #Solving the circuits
-            qobjs = assemble(qcs, backend=backend)
-            options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
-            job_info = backend.run(qobjs, shots = 1, options = options)
+                #Solving the circuits
+                qobjs = assemble(qcs, backend=backend)
+                options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
+                job_info = backend.run(qobjs, shots = 1, options = options)
 
-            #Append the results to populations
-            for nq, qc in enumerate(qcs):
-                counts = job_info.result().get_counts(qc)
-                ntime = nq%len(tlist)
-                for i in range(N):
-                    try:
-                        populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
-                    except:
-                        pass
+                #Append the results to populations
+                for nq, qc in enumerate(qcs):
+                    counts = job_info.result().get_counts(qc)
+                    ntime = nq%len(tlist)
+                    for i in range(N):
+                        try:
+                            populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
+                        except:
+                            pass
 
-            yield populations, traj_chunk + chunk_len
+                yield populations, traj_chunk + chunk_len
+            except Exception as e:
+                print('Warning: Anormal termination at trajectory {}. Error: '.format(traj_chunk), e)
+                break
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
         qc = self.__sys_free_evolution(H, N, dt)[0]
@@ -444,7 +463,7 @@ class _CA():
 
         return qc
 
-    def solve(self, H, N, dt, t_max, tau, Gamma, shots, qubits_per_pseudomode):
+    def solve(self, H, N, dt, t_max, tau, Gamma, shots, options:Options):
         #Initializing the registers
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -453,6 +472,7 @@ class _CA():
         else:
             q_reg = QuantumRegister(N)
             cl_reg = ClassicalRegister(N)
+        qubits_per_pseudomode = options.get(['qubits_per_pseudomode'])
         pseudo_reg = [QuantumRegister(qubits_per_pseudomode) for _ in range(N)]
         ancilla = QuantumRegister(1)
 
@@ -466,7 +486,7 @@ class _CA():
         populations = [[] for i in range(N)]
 
         #To simplify the work divide the dynamics into time chunks of length
-        chunk_len = 100
+        chunk_len = options.get(['job_chunks'])
 
         #Creating the quanutm circuits
         qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
@@ -479,29 +499,33 @@ class _CA():
 
         #Propagating in time
         for nt_chunk in range(0, len(tlist), chunk_len):
-            #Creating a list with all the quantum circuit for a parallelized evaluation
-            qcs = []
-            for nt in range(chunk_len):
-                qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                qc_copy.measure(q_reg, cl_reg)
-                qcs.append(qc_copy)
-                qc_lead.compose(qc_Trotter_step, inplace=True)
+            try:
+                #Creating a list with all the quantum circuit for a parallelized evaluation
+                qcs = []
+                for nt in range(chunk_len):
+                    qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
+                    qc_copy.measure(q_reg, cl_reg)
+                    qcs.append(qc_copy)
+                    qc_lead.compose(qc_Trotter_step, inplace=True)
 
-            #Solving the circuits
-            qobjs = assemble(qcs, backend=backend)
-            options = {'max_parallel_threads':0, 'max_parallel_shots':0}
-            job_info = backend.run(qobjs, shots = shots, options = options)
+                #Solving the circuits
+                qobjs = assemble(qcs, backend=backend)
+                options = {'max_parallel_threads':0, 'max_parallel_shots':0}
+                job_info = backend.run(qobjs, shots = shots, options = options)
 
-            #Append the results to populations
-            for qc in qcs:
-                counts = job_info.result().get_counts(qc)
-                for i in range(N):
-                    try:
-                        populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
-                    except:
-                        populations[i].append(0)
+                #Append the results to populations
+                for qc in qcs:
+                    counts = job_info.result().get_counts(qc)
+                    for i in range(N):
+                        try:
+                            populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
+                        except:
+                            populations[i].append(0)
 
-            yield populations, tlist[nt_chunk + chunk_len - 1]
+                yield populations, tlist[nt_chunk + chunk_len - 1]
+            except Exception as e:
+                print('Warning: Anormal termination at time {}. Error: '.format(tlist[nt_chunk]), e)
+                break
 
     def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):
         if transpiled == True:

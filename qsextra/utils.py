@@ -1,7 +1,8 @@
 from qiskit import QuantumCircuit, QuantumRegister
 import numpy as np
+from typing import Literal
 
-def CNOT_staircase_circuit(qubits, dt, Pauli_dict):
+def cnot_staircase_circuit(qubits, dt, Pauli_dict):
     '''A simple routine to generate a CNOT staircase circuit implementing some Pauli rotations.
     Input:
     - qubits [int]: number of qubits of the system
@@ -37,3 +38,29 @@ def CNOT_staircase_circuit(qubits, dt, Pauli_dict):
             qc.compose(qc_stairs.inverse(),inplace=True)
             qc.compose(qc_rotations.inverse(),inplace=True)
     return qc
+
+class Options():
+    def __init__(self,
+                 qubits_per_pseudomode: int = 1,
+                 job_chunks: int = 100):
+        '''
+        Extra options for the computation of the dynamics.
+
+        Input:
+        - qubits_per_pseudomode: int
+            Number of qubits to use in the collision model to implement a pseudomode.
+        - job_chunks: int
+            Number of chunks into which the computation of the dynamics is divided.
+        '''
+        self.options_dict = {}
+        self.options_dict['qubits_per_pseudomode'] = qubits_per_pseudomode
+        self.options_dict['job_chunks'] = job_chunks
+
+    def set(self,
+            property: Literal['qubits_per_pseudomode', 'job_chunks'],
+            value: int
+            ) -> None:
+        self.options_dict[property] = value
+
+    def get(self) -> dict:
+        return self.options_dict
