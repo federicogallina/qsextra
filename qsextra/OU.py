@@ -214,7 +214,7 @@ class _CNA():
                         qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
                         H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj_chunk + traj], tau, dt)
                     qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                    qc_copy.measure(q_reg,cl_reg)
+                    qc_copy.measure(q_reg, cl_reg)
                     qcs.append(qc_copy)
 
             #Solving the circuits
@@ -481,9 +481,9 @@ class _CA():
         for nt_chunk in range(0, len(tlist), chunk_len):
             #Creating a list with all the quantum circuit for a parallelized evaluation
             qcs = []
-            for nt in range(nt_chunk):
+            for nt in range(chunk_len):
                 qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                qc_copy.measure(q_reg,cl_reg)
+                qc_copy.measure(q_reg, cl_reg)
                 qcs.append(qc_copy)
                 qc_lead.compose(qc_Trotter_step, inplace=True)
 
