@@ -202,10 +202,8 @@ class _CNA():
 
         #Create the time list and the list (of lists) that will contain the values of the populations
         tlist = np.arange(0,t_max+dt,dt)
+        effective_tlist = np.arange(0,t_max+dt,options.get()['sampling_steps']*dt)
         populations = np.zeros([len(tlist),N])
-
-        #To simplify the work divide the dynamics into trajectory chunks of length
-        chunk_len = options.get()['job_chunks']
 
         #Creating the random numbers for the energy fluctuations
         random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
@@ -213,45 +211,59 @@ class _CNA():
         qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt)
         qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
 
-        
-        for traj_chunk in range(0, shots, chunk_len):
-            try:
-                qcs = []
-                for traj in range(chunk_len):
-                    H_fluc = np.array(random_increments[:, 0, traj_chunk + traj])
+        #Propagating in time
+        chunk_counter = 1 #We divide the time propagations into chunks of time to facilitate the job execution
+        sampling_counter = 0 #We measure the state of the circuit only after a certain amount of time steps to avoid excess of information
+        sampling_steps = options.get()['sampling_steps']
+        job_options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':1}
+        qcs = []
+        for traj in range(shots):
+            '''try:'''
+            H_fluc = np.array(random_increments[:, 0, traj])
 
-                    qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
-                    if self.mapping == 'physical':
-                        qc_lead.x(0)
+            qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+            if self.mapping == 'physical':
+                qc_lead.x(0)
 
-                    for nt in range(len(tlist)):
-                        if nt > 0:
-                            energies = np.diag(H) + H_fluc
-                            qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                            H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj_chunk + traj], tau, dt)
-                        qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
-                        qc_copy.measure(q_reg, cl_reg)
-                        qcs.append(qc_copy)
+            for nt, t in enumerate(tlist):
+                if nt > 0:
+                    energies = np.diag(H) + H_fluc
+                    qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
+                    H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj], tau, dt)
+                if sampling_counter == 0:
+                    qc_copy = qc_lead.copy()
+                    qc_copy.measure(q_reg, cl_reg)
+                    qcs.append(qc_copy)
+                sampling_counter += 1
+                if sampling_counter == sampling_steps:
+                    sampling_counter = 0
 
+            if chunk_counter == options.get()['job_chunks'] or traj == shots-1:
+                print('len(qcs) = {}'.format(len(qcs)))
+                print('chunk_counter = {}'.format(chunk_counter))
                 #Solving the circuits
                 qobjs = assemble(qcs, backend=backend)
-                options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':0}
-                job_info = backend.run(qobjs, shots = 1, options = options)
+                job_info = backend.run(qobjs, shots = 1, options = job_options)
 
                 #Append the results to populations
                 for nq, qc in enumerate(qcs):
                     counts = job_info.result().get_counts(qc)
-                    ntime = nq%len(tlist)
+                    ntime = nq%len(effective_tlist)
                     for i in range(N):
                         try:
                             populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
                         except:
                             pass
-
-                yield populations, traj_chunk + chunk_len
-            except Exception as e:
-                print('Warning: Anormal termination at trajectory {}. Error: '.format(traj_chunk), e)
-                break
+                
+                qcs = []
+                chunk_counter = 1
+                yield populations, traj
+            else:
+                chunk_counter += 1
+                    
+            '''except Exception as e:
+                print('Warning: Anormal termination at trajectory {}. Error: '.format(traj), e)
+                break'''
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
         qc = self.__sys_free_evolution(H, N, dt)[0]
@@ -472,7 +484,7 @@ class _CA():
         else:
             q_reg = QuantumRegister(N)
             cl_reg = ClassicalRegister(N)
-        qubits_per_pseudomode = options.get(['qubits_per_pseudomode'])
+        qubits_per_pseudomode = options.get()['qubits_per_pseudomode']
         pseudo_reg = [QuantumRegister(qubits_per_pseudomode) for _ in range(N)]
         ancilla = QuantumRegister(1)
 
@@ -485,9 +497,6 @@ class _CA():
         tlist = np.arange(0,t_max+dt,dt)
         populations = [[] for i in range(N)]
 
-        #To simplify the work divide the dynamics into time chunks of length
-        chunk_len = options.get(['job_chunks'])
-
         #Creating the quanutm circuits
         qc_lead = QuantumCircuit(q_reg, *pseudo_reg, ancilla, cl_reg) #Lead of the evlution
         qc_Trotter_step = self.__Trotter_step(H, N, dt, tau, Gamma, qubits_per_pseudomode) #Incremental block of the evolution
@@ -498,33 +507,48 @@ class _CA():
             qc_lead.x(0)
 
         #Propagating in time
-        for nt_chunk in range(0, len(tlist), chunk_len):
+        chunk_counter = 1 #We divide the time propagations into chunks of time to facilitate the job execution
+        job_chunks = options.get()['job_chunks']
+        sampling_counter = 0 #We measure the state of the circuit only after a certain amount of time steps to avoid excess of information
+        sampling_steps = options.get()['sampling_steps']
+        job_options = {'max_parallel_threads':0, 'max_parallel_shots':0}
+        qcs = []
+        for nt, t in enumerate(tlist):
             try:
-                #Creating a list with all the quantum circuit for a parallelized evaluation
-                qcs = []
-                for nt in range(chunk_len):
+                if sampling_counter == 0:
+                    #Append circuit for measuring
                     qc_copy = qc_lead.copy(name = 'circuit_{}'.format(nt))
                     qc_copy.measure(q_reg, cl_reg)
                     qcs.append(qc_copy)
-                    qc_lead.compose(qc_Trotter_step, inplace=True)
+                sampling_counter += 1
+                if sampling_counter == sampling_steps:
+                    sampling_counter = 0
+                
+                #Propagate the dynamics
+                qc_lead.compose(qc_Trotter_step, inplace=True)
 
-                #Solving the circuits
-                qobjs = assemble(qcs, backend=backend)
-                options = {'max_parallel_threads':0, 'max_parallel_shots':0}
-                job_info = backend.run(qobjs, shots = shots, options = options)
+                if chunk_counter == job_chunks or nt == len(tlist)-1:
+                    #Solving the circuits
+                    qobjs = assemble(qcs, backend=backend)
+                    job_info = backend.run(qobjs, shots = shots, options = job_options)
 
-                #Append the results to populations
-                for qc in qcs:
-                    counts = job_info.result().get_counts(qc)
-                    for i in range(N):
-                        try:
-                            populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
-                        except:
-                            populations[i].append(0)
-
-                yield populations, tlist[nt_chunk + chunk_len - 1]
+                    #Append the results to populations
+                    for qc in qcs:
+                        counts = job_info.result().get_counts(qc)
+                        for i in range(N):
+                            try:
+                                populations[i].append(counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else populations[i].append(counts['{:b}'.format(i).zfill(qubits)]/shots)
+                            except:
+                                populations[i].append(0)
+                    
+                    qcs = []
+                    chunk_counter = 1
+                    yield populations, t
+                else:
+                    chunk_counter += 1
+            
             except Exception as e:
-                print('Warning: Anormal termination at time {}. Error: '.format(tlist[nt_chunk]), e)
+                print('Warning: Anormal termination at time {}. Error: '.format(t), e)
                 break
 
     def minimal_circuit(self, H, N, dt, tau, Gamma, qubits_per_pseudomode, backend, transpiled):

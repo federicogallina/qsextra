@@ -41,23 +41,27 @@ def cnot_staircase_circuit(qubits, dt, Pauli_dict):
 
 class Options():
     def __init__(self,
+                 sampling_steps: int = 1,
                  qubits_per_pseudomode: int = 1,
-                 job_chunks: int = 100):
+                 job_chunks: int = 200):
         '''
         Extra options for the computation of the dynamics.
 
         Input:
+        - sampling_steps
+            Number of dt evolution steps before sampling the circuit
         - qubits_per_pseudomode: int
             Number of qubits to use in the collision model to implement a pseudomode.
         - job_chunks: int
             Number of chunks into which the computation of the dynamics is divided.
         '''
         self.options_dict = {}
+        self.options_dict['sampling_steps'] = sampling_steps
         self.options_dict['qubits_per_pseudomode'] = qubits_per_pseudomode
         self.options_dict['job_chunks'] = job_chunks
 
     def set(self,
-            property: Literal['qubits_per_pseudomode', 'job_chunks'],
+            property: Literal['qubits_per_pseudomode', 'job_chunks', 'sampling_steps'],
             value: int
             ) -> None:
         self.options_dict[property] = value

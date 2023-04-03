@@ -5,7 +5,7 @@ from qiskit.circuit import Parameter
 import numpy as np
 import itertools
 from math import prod
-from qsextra.utils import CNOT_staircase_circuit
+from qsextra.utils import cnot_staircase_circuit, Options
 
 
 def evolve(Hamiltonian, t_max, dt, gamma, shots=10000, method='classical noise', mapping='physical'):
@@ -96,7 +96,7 @@ class _CNA():
                         site_energies_dict[Pauli_string] = site_energies_dict[Pauli_string] + Pauli_coefs_comb[i]
                     except:
                         site_energies_dict[Pauli_string] = Pauli_coefs_comb[i]
-            qc.compose(CNOT_staircase_circuit(qubits, dt, site_energies_dict),inplace=True)
+            qc.compose(cnot_staircase_circuit(qubits, dt, site_energies_dict),inplace=True)
 
             interactions_dict = {}
             for index in range(N-1):
