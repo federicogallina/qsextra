@@ -1,7 +1,7 @@
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile, assemble
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, Aer, transpile, assemble, execute
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.opflow import PauliSumOp, X, Y, Z, PauliTrotterEvolution
-from qiskit.circuit import Parameter
+from qiskit.circuit import Parameter, ParameterVector
 import numpy as np
 import itertools
 from math import prod
@@ -62,13 +62,12 @@ def evolve(Hamiltonian:Union[list[list[float]],np.ndarray],
     N = H.shape[0]
 
     if method == 'classical noise':
-        tlist = np.arange(0,t_max+dt,dt)
-        populations = np.zeros([len(tlist),N])
-        trajectories = 0
-        for pops_iter, trajs_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, options):
+        populations = []
+        final_time = 0
+        for pops_iter, final_time_iter in _CNA(mapping).solve(H, N, dt, t_max, tau, Gamma, shots, options):
             populations = pops_iter
-            trajectories = trajs_iter
-        return populations, trajectories
+            final_time = final_time_iter
+        return populations, final_time
     if method == 'collision model':
         populations = []
         final_time = 0
@@ -112,8 +111,8 @@ class _CNA():
         '''Working class for Classical Noise Algorithm, algorithmic mapping'''
         self.mapping = mapping
 
-    def __sys_free_evolution(self, H, N, dt):
-        energy_params = [Parameter('H{}{}'.format(i,i)) for i in range(N)]
+    def __sys_free_evolution(self, H, N, dt, time_index):
+        energy_params = ParameterVector('E_{}'.format(time_index), N)
 
         if self.mapping == 'algorithmic':
             qubits = int(np.ceil(np.log2(N)))
@@ -178,10 +177,20 @@ class _CNA():
                         qc.ryy(H[i,j]*dt,q_reg[i],q_reg[j])
         
         return qc, energy_params
-    
-    def __fluctuation_update(self, H_fluc, rand_increment, tau, dt):
-        H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
-        return H_fluc
+
+    def __energy_fluctuations(self, H, rand_increments, tau, dt, tlist):
+        def __fluctuation_update(H_fluc, rand_increment, tau, dt):
+            H_fluc = H_fluc*np.exp(-dt/tau)+np.array(rand_increment)*np.sqrt(1-np.exp(-2*dt/tau))
+            return H_fluc
+        
+        static_energies = np.tile(np.diag(H), (rand_increments.shape[2], 1)).T
+        energy_fluctuations = np.zeros(rand_increments.shape)
+        energy_fluctuations[0] = static_energies + rand_increments[0]
+
+        for nt in range(1, len(tlist)-1):
+            energy_fluctuations[nt] = __fluctuation_update(energy_fluctuations[nt-1], rand_increments[nt], tau, dt)
+
+        return energy_fluctuations
 
     def solve(self, H, N, dt, t_max, tau, Gamma, shots, options:Options):
         #Initializing the registers
@@ -200,69 +209,57 @@ class _CNA():
                                   max_parallel_experiments = 0,
                                   max_parallel_shots = 1)
 
-        #Create the time list and the list (of lists) that will contain the values of the populations
+        #Creating the time list and the list (of lists) that will contain the values of the populations
         tlist = np.arange(0,t_max+dt,dt)
-        effective_tlist = np.arange(0,t_max+dt,options.get()['sampling_steps']*dt)
-        populations = np.zeros([len(tlist),N])
+        populations = [[] for i in range(N)]
 
-        #Creating the random numbers for the energy fluctuations
-        random_increments = np.sqrt(Gamma/tau)*np.random.randn(N,len(tlist),shots)
-
-        qc_Trotter_step, energy_params = self.__sys_free_evolution(H, N, dt)
-        qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
+        #Creating the energy fluctuations
+        random_increments = np.sqrt(Gamma/tau)*np.random.randn(len(tlist), N, shots)
+        energy_fluctuations = self.__energy_fluctuations(H, random_increments, tau, dt, tlist)
 
         #Propagating in time
-        chunk_counter = 1 #We divide the time propagations into chunks of time to facilitate the job execution
         sampling_counter = 0 #We measure the state of the circuit only after a certain amount of time steps to avoid excess of information
         sampling_steps = options.get()['sampling_steps']
         job_options = {'max_parallel_threads':0, 'max_parallel_experiments':0, 'max_parallel_shots':1}
-        qcs = []
-        for traj in range(shots):
-            '''try:'''
-            H_fluc = np.array(random_increments[:, 0, traj])
+        qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
+        if self.mapping == 'physical':
+            qc_lead.x(0)
 
-            qc_lead = QuantumCircuit(q_reg, cl_reg) #Lead of the evlution
-            if self.mapping == 'physical':
-                qc_lead.x(0)
+        for nt, t in enumerate(tlist):
+            '''try'''
+            print('Time = ' + str(t))
+            if nt > 0:
+                qc_Trotter_step, _ = self.__sys_free_evolution(H, N, dt, '{}'.format(nt).zfill(int(np.floor(np.log10(len(tlist)+1)))))
+                qc_Trotter_step = transpile(qc_Trotter_step, backend=backend)
+                qc_lead.compose(qc_Trotter_step, inplace=True)
 
-            for nt, t in enumerate(tlist):
-                if nt > 0:
-                    energies = np.diag(H) + H_fluc
-                    qc_lead.compose(qc_Trotter_step.bind_parameters(dict(zip(energy_params, energies.tolist()))), inplace=True)
-                    H_fluc = self.__fluctuation_update(H_fluc, random_increments[:, nt, traj], tau, dt)
-                if sampling_counter == 0:
-                    qc_copy = qc_lead.copy()
-                    qc_copy.measure(q_reg, cl_reg)
-                    qcs.append(qc_copy)
-                sampling_counter += 1
-                if sampling_counter == sampling_steps:
-                    sampling_counter = 0
+            if sampling_counter == 0:
+                qc_copy = qc_lead.copy()
+                qc_copy.measure(q_reg, cl_reg)
 
-            if chunk_counter == options.get()['job_chunks'] or traj == shots-1:
-                print('len(qcs) = {}'.format(len(qcs)))
-                print('chunk_counter = {}'.format(chunk_counter))
-                #Solving the circuits
-                qobjs = assemble(qcs, backend=backend)
-                job_info = backend.run(qobjs, shots = 1, options = job_options)
-
-                #Append the results to populations
-                for nq, qc in enumerate(qcs):
-                    counts = job_info.result().get_counts(qc)
-                    ntime = nq%len(effective_tlist)
+                if nt == 0:
+                    job_info = execute(qc_copy, backend=backend, shots = 1, options = job_options)
+                else:
+                    job_info = execute([qc_copy.bind_parameters(dict(zip(qc_copy.parameters, energy_fluctuations[0:nt,:,traj].flatten()))) for traj in range(shots)], backend=backend, shots = 1, options = job_options)
+                
+                counts_list = job_info.result().get_counts()
+                populations_t = [0 for i in range(N)]
+                for counts in counts_list:
                     for i in range(N):
                         try:
-                            populations[ntime,i] = (populations[ntime,i] + counts['{:b}'.format(1<<i).zfill(N)]/shots) if self.mapping == 'physical' else (populations[ntime,i] + counts['{:b}'.format(i).zfill(qubits)]/shots)
+                            populations_t[i] += counts['{:b}'.format(1<<i).zfill(N)]/shots if self.mapping == 'physical' else counts['{:b}'.format(i).zfill(qubits)]/shots
                         except:
                             pass
-                
-                qcs = []
-                chunk_counter = 1
-                yield populations, traj
-            else:
-                chunk_counter += 1
-                    
+                for i in range(N):
+                    populations[i].append(populations_t[i])
+                yield populations, t
+
+            sampling_counter += 1
+            if sampling_counter == sampling_steps:
+                sampling_counter = 0
+            
             '''except Exception as e:
-                print('Warning: Anormal termination at trajectory {}. Error: '.format(traj), e)
+                print('Warning: Anormal termination at time {}. Error: '.format(t), e)
                 break'''
 
     def minimal_circuit(self, H, N, dt, backend, transpiled):
