@@ -2,7 +2,7 @@
 # QSExTra
 Quantum Simulation of Exciton Transport
 
-## Requirements
+## Installing the QSExTra package and dependences
 We advise the use of [Conda](https://www.anaconda.com/products/individual) environments for a clean setup.
 
 Once Conda is installed, create a new environment and switch to it by running:
