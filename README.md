@@ -1,5 +1,5 @@
 ![Alt text](images/qsextra_logo_V1.png?raw=true "Title")
-# QS-ExTra
+# QSExTra
 Quantum Simulation of Exciton Transport
 
 ## Requirements
