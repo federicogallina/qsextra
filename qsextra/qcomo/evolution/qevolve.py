@@ -433,33 +433,33 @@ def qevolve(system: ChromophoreSystem | ExcitonicSystem,
         The target time(s).
 
     shots: int | None
-        If None or 0, does not add measurements to the QuantumCircuits. If positive, add measurement operations and perform that number of measurements on the circuits.
+        If `None` or `0`, does not add measurements to the quantum circuits. If positive, add measurement operations and perform that number of measurements on the circuits.
 
     initialize_circuit: bool
-        If True, initialize the circuit to the system state.
+        If `True`, initialize the circuit to the system state.
 
     Trotter_number: int
-        Number of Trotter steps in a time interval (dt) for the system evolution.
+        Number of Trotter steps in a time interval (`dt`) for the system evolution.
 
     Trotter_order: int
-        Order of the Trotter decomposition. If 1, use LieTrotter decomposition from qiskit.synthesis. If more than 1, use SuzukiTrotter decomposition from qiskit.synthesis
+        Order of the Trotter decomposition. If `1`, use `LieTrotter` decomposition from `qiskit.synthesis`. If more than `1`, use `SuzukiTrotter` decomposition from `qiskit.synthesis`.
 
     dt: float
-        Time interval. If coll_rates is specified, the collisions are applied at each dt. If not specified, dt = (time[1] - time[0]) / Trotter_number.
+        Time interval. If `coll_rates` is specified, the collisions are applied at each dt. If not specified, `dt = (time[1] - time[0]) / Trotter_number`.
 
     coll_rates: float | list[float] | None
-        If None, a Schrödinger dynamics is returned. Else, if system is an ExcitonicSystem object, a float value dictating the system relaxations due to a Markovian environment. If system is a ChromophoreSystem object, a float or list of floats with the relaxation rates of pseudomodes due to the interaction with a Markovian environment.
+        If `None`, a Schrödinger dynamics is returned. Else, if system is an `ExcitonicSystem` object, a float value dictating the system relaxations due to a Markovian environment. If system is a `ChromophoreSystem` object, a float or list of floats with the relaxation rates of pseudomodes due to the interaction with a Markovian environment.
 
     GPU: bool
-        If True, use GPU for the simulation.
+        If `True`, use GPU for the simulation.
 
     verbose: bool
-        If True, print during the execution of the code.
+        If `True`, print during the execution of the code.
 
     Returns
     -------
     qiskit.QuantumCircuit | list[qiskit.QuantumCircuit] | qiskit.result.result.Result
-        If shots is None, return the QuantumCircuit or the list of QuantumCircuits implementing the dynamics. If shots is 0, return the qiskit's Result object resulting from AerSimulation(method='statevector'). If shots is a positive number, return the qiskit's Result object resulting from AerSimulation().
+        If shots is `None`, return the `QuantumCircuit` or the `list[QuantumCircuits]` implementing the dynamics. If `shots` is `0`, return the qiskit's `Result` object resulting from `AerSimulation(method='statevector')`. If shots is a positive number, return the qiskit's `Result` object resulting from `AerSimulation()`.
     '''
     # Define a function to print if verbose
     verboseprint = print if verbose else lambda *a, **k: None

@@ -105,21 +105,21 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
         The target time(s).
 
     rates: float | list[float] | None
-        If None, a Schrödinger dynamics is returned. Else, if system is an ExcitonicSystem object, a float value dictating the system relaxations due to a Markovian environment. If system is a ChromophoreSystem object, a float or list of floats with the relaxation rates of pseudomodes due to the interaction with a Markovian environment.
+        If `None`, a Schrödinger dynamics is returned. Else, if system is an `ExcitonicSystem` object, a float value dictating the system relaxations due to a Markovian environment. If system is a `ChromophoreSystem` object, a float or list of floats with the relaxation rates of pseudomodes due to the interaction with a Markovian environment.
 
     measure_populations: bool
-        If True, return the expectation values of the populations of the chromophores at the specified times.
+        If `True`, return the expectation values of the populations of the chromophores at the specified times.
 
     state_overwrite: Qobj
-        Specify the (excitonic) state to propagate instead of system.get_e_state().
+        Specify the (excitonic) state to propagate instead of `system.get_e_state()`.
 
     verbose: bool
-        If True, print during the execution of the code.
+        If `True`, print during the execution of the code.
 
     Returns
     -------
     qutip.solver.Result
-        Results of the dynamics using Qutip.
+        Results of the dynamics using `Qutip`.
     '''
     # Checking the validity of the system
     if not type(system) is ChromophoreSystem and not type(system) is ExcitonicSystem:

@@ -116,8 +116,8 @@ class ExcitonicSystem():
                  couplings: list[list[float]] | float | np.ndarray = None,
                  dipole_moments: list[float] | float | np.ndarray = None,
                  ):
-        """ Create a ExcitonicSystem object.
-        A ExcitonicSystem object contains the information about the excitonic part of a chromophore system intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
+        """ Create an `ExcitonicSystem` object.
+        An `ExcitonicSystem` object contains the information about the excitonic part of a chromophore system intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
         The exciton Hamiltonian is
 
         .. math:: H^{e} = - \sum_{i=1}^{N} \epsilon_{i}/2 \sigma^{z}_{i} + \sum_{i=1}^{N-1} \sum_{j>1}^{N} ( J_{ij} \sigma^{+}_{i} \sigma^{-}_{j} + h.c. )
@@ -183,7 +183,7 @@ class ExcitonicSystem():
                   state_type: Literal['state', 'delocalized excitation', 'localized excitation', 'ground'] = 'ground',
                   state: list | np.ndarray | int = 0,
                   ):
-        """ Set the ExcitonicSystem electronic ket state.
+        """ Set the `ExcitonicSystem` electronic ket state.
         Note that in this version of the code only pure states are accepted.
 
         Parameters
@@ -193,10 +193,10 @@ class ExcitonicSystem():
         
         state: list | np.ndarray | int
             The state of the system. The input is given by the selected state_type:
-            - 'state': It requires a list of coefficients for the :math:`2^{N}` states that compose the electronic Hilbert space. A standard binary ordering and local basis set are intended, that is to say, for N=3 state [0., 0., 0., 1.+0.j, 0., 0., 0., 0.] = |011> denotes a double excitation state with both chromophore 0 and 1 excited. 
-            - 'delocalized excitation': It takes a list of N (complex) coefficients that describe the superposition of single excitation states. For example, for N=3, [c_001, c_010, c_100] = [0., 1./sqrt(2), 1./sqrt(2)] = 1/sqrt(2) |010> + 1/sqrt(2) |100>.
-            - 'localized excitation': It takes an integer that denotes the excited chromophore. Chromophores are numbered from 0 to N-1.
-            - 'ground': It does not require any input. The system is in the global ground state.
+            - `'state'`: It requires a list of coefficients for the :math:`2^{N}` states that compose the electronic Hilbert space. A standard binary ordering and local basis set are intended, that is to say, for N=3 state `[0., 0., 0., 1.+0.j, 0., 0., 0., 0.] = |011>` denotes a double excitation state with both chromophore 0 and 1 excited. 
+            - `'delocalized excitation'`: It takes a list of N (complex) coefficients that describe the superposition of single excitation states. For example, for N=3, `[c_001, c_010, c_100] = [0., 1./sqrt(2), 1./sqrt(2)] = 1/sqrt(2) |010> + 1/sqrt(2) |100>`.
+            - `'localized excitation'`: It takes an integer that denotes the excited chromophore. Chromophores are numbered from 0 to N-1.
+            - `'ground'`: It does not require any input. The system is in the global ground state.
         """
         valid_state_types = ('state', 'delocalized excitation', 'localized excitation', 'ground')
         if not self._validity:
@@ -321,8 +321,8 @@ class ChromophoreSystem(ExcitonicSystem):
                  levels_pseudomode: int = None,
                  couplings_ep: list[float] | float = None,
                  ):
-        """ Create a ChromophoreSystem object.
-        A ChromophoreSystem object contains the information about the whole chromophore intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
+        """ Create a `ChromophoreSystem` object.
+        A `ChromophoreSystem` object contains the information about the whole chromophore intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
         The exciton Hamiltonian is
 
         .. math:: H^{e} = - \sum_{i=1}^{N} \epsilon_{i}/2 \sigma^{z}_{i} + \sum_{i=1}^{N-1} \sum_{j>1}^{N} ( J_{ij} \sigma^{+}_{i} \sigma^{-}_{j} + h.c. )
@@ -342,7 +342,7 @@ class ChromophoreSystem(ExcitonicSystem):
             The amplitude of the transition dipole moments of the chromophores. It is a list, a number (for a single chromophore) or a monodimensional array.
 
         excitonic_system: ExcitonicSystem
-            Initialize the electronic part of the ChromophoreSystem to the given ExcitonicState.
+            Initialize the electronic part of the `ChromophoreSystem` to the given `ExcitonicSystem`.
 
         frequencies_pseudomode: list[float] | float
             The frequencies of the pseudomodes. If a single pseudomode per chromophore is considered, a float value is accepted.
