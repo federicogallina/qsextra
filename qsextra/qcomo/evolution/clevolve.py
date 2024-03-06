@@ -139,6 +139,9 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
                         measure_populations,
                         )
 
+    # Making sure time is itarable
+    time = if_scalar_to_list(time)
+
     # Checking the rates
     if type(system) is ExcitonicSystem:
         if not np.isscalar(rates) and rates is not None:
