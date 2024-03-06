@@ -19,6 +19,7 @@ def ending_sentence(verbose: bool):
     verboseprint(oracle_word())
 
 def __evolve_exsys(system: ExcitonicSystem,
+                   state: Qobj,
                    time: float | list[float] | np.ndarray,
                    rates: float | None,
                    measure_populations: bool,
@@ -32,13 +33,13 @@ def __evolve_exsys(system: ExcitonicSystem,
         return ops_list
     if rates is None:
         results = sesolve(system.get_e_Hamiltonian(),
-                          system.get_e_state(),
+                          state,
                           time,
                           e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
                           )
     else:
         results = mesolve(system.get_e_Hamiltonian(),
-                          system.get_e_state(),
+                          state,
                           time,
                           c_ops = e_ops(system.system_size, np.sqrt(rates) * sigmaz()),
                           e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
@@ -47,6 +48,7 @@ def __evolve_exsys(system: ExcitonicSystem,
     return results
 
 def __evolve_cpsys(system: ChromophoreSystem,
+                   state: Qobj,
                    time: float | list[float] | np.ndarray,
                    rates: float| list[float] | None,
                    measure_populations: bool,
@@ -75,7 +77,7 @@ def __evolve_cpsys(system: ChromophoreSystem,
     W = len(system.mode_dict['omega_mode'])
     d = system._mode_dict['lvl_mode']
     Id = [identity(d[k]) for k in range(W)]
-    state0 = kron(system.get_e_state(),
+    state0 = kron(state,
                   *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)]*system.system_size,
                   )
     if rates is None:
@@ -98,6 +100,7 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
              time: float | list[float] | np.ndarray,
              rates: float | list[float] | None = None,
              measure_populations: bool = True,
+             state_overwrite: Qobj = None,
              verbose: bool = True,
              ) -> Result:
     ''' Quantum algorithm for the simulation of the dynamics of the system.
@@ -115,6 +118,9 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
 
     measure_populations: bool
         If True, return the expectation values of the populations of the chromophores at the specified times.
+
+    state_overwrite: Qobj
+        Specify the (excitonic) state to propagate instead of system.get_e_state().
 
     verbose: bool
         If True, print during the execution of the code.
@@ -152,8 +158,15 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
             if len(rates) != len(system.mode_dict['omega_mode']):
                 raise ValueError('The number of dephasing rates is different from the number of pseudomodes per chromophore.')
 
+    # Checking the initial state
+    if state_overwrite is None:
+        state = system.get_e_state()
+    else:
+        state = state_overwrite
+
     if type(system) is ExcitonicSystem:
         return __evolve_exsys(system,
+                              state,
                               time,
                               rates,
                               measure_populations,
@@ -161,6 +174,7 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
                               )
     elif type(system) is ChromophoreSystem:
         return __evolve_cpsys(system,
+                              state,
                               time,
                               rates,
                               measure_populations,
