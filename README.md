@@ -1,4 +1,4 @@
-![Alt text](images/qsextra_logo.png?raw=true "Title")
+![Alt text](Images/qsextra_logo.png?raw=true "Title")
 # QSExTra
 Quantum Simulation of Exciton Transport
 
