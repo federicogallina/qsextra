@@ -23,7 +23,6 @@ def __evolve_exsys(system: ExcitonicSystem,
                    time: float | list[float] | np.ndarray,
                    rates: float | None,
                    measure_populations: bool,
-                   verbose: bool,
                    ):
     def e_ops(N, op):
         I = identity(2)
@@ -44,7 +43,6 @@ def __evolve_exsys(system: ExcitonicSystem,
                           c_ops = e_ops(system.system_size, np.sqrt(rates) * sigmaz()),
                           e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
                           )
-    ending_sentence(verbose)
     return results
 
 def __evolve_cpsys(system: ChromophoreSystem,
@@ -52,7 +50,6 @@ def __evolve_cpsys(system: ChromophoreSystem,
                    time: float | list[float] | np.ndarray,
                    rates: float| list[float] | None,
                    measure_populations: bool,
-                   verbose: bool,
                    ):
     def e_ops(N, op, Id_pseudomodes):
         I = identity(2)
@@ -93,7 +90,6 @@ def __evolve_cpsys(system: ChromophoreSystem,
                           c_ops = c_ops(system.system_size, rates, d, Id),
                           e_ops = e_ops(system.system_size, basis(2,1).proj(), Id) if measure_populations else None,
                           )
-    ending_sentence(verbose)
     return results
 
 def clevolve(system: ChromophoreSystem | ExcitonicSystem,
@@ -165,18 +161,18 @@ def clevolve(system: ChromophoreSystem | ExcitonicSystem,
         state = state_overwrite
 
     if type(system) is ExcitonicSystem:
-        return __evolve_exsys(system,
-                              state,
-                              time,
-                              rates,
-                              measure_populations,
-                              verbose,
-                              )
+        results = __evolve_exsys(system,
+                                 state,
+                                 time,
+                                 rates,
+                                 measure_populations,
+                                 )
     elif type(system) is ChromophoreSystem:
-        return __evolve_cpsys(system,
-                              state,
-                              time,
-                              rates,
-                              measure_populations,
-                              verbose,
-                              )
+        results = __evolve_cpsys(system,
+                                 state,
+                                 time,
+                                 rates,
+                                 measure_populations,
+                                 )
+    ending_sentence(verbose)
+    return results
