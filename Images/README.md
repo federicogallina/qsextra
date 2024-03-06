@@ -1,0 +1,1 @@
+We acknowledge [Beatrice Gallina](https://www.instagram.com/beatricegallina/) for creating the project logo.
