@@ -10,7 +10,7 @@ import numpy as np
 import itertools
 from math import prod
 import warnings
-from qsextra.tools.oracle import oracle_word
+from qsextra.tools.oracle import ending_sentence
 
 def __create_circuit(system: ChromophoreSystem | ExcitonicSystem,
                      bool_ancillae: bool,
@@ -523,7 +523,7 @@ def qevolve(system: ChromophoreSystem | ExcitonicSystem,
 
     # Return the circuit
     if shots is None:
-         verboseprint(oracle_word())
+         ending_sentence(verbose)
          return qc_list
     # Run the statevector simulation
     elif shots == 0:
@@ -544,5 +544,5 @@ def qevolve(system: ChromophoreSystem | ExcitonicSystem,
             except AerError as e:
                 print(e)
         results = simulator.run(qc_list, shots = shots).result()
-    verboseprint(oracle_word())
+    ending_sentence(verbose)
     return results

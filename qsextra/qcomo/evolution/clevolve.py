@@ -11,12 +11,7 @@ from qutip import (Qobj,
                    )
 from qutip.solver import Result
 from qsextra.tools import kron, if_scalar_to_list
-from qsextra.tools.oracle import oracle_word
-
-def ending_sentence(verbose: bool):
-    # Define a function to print if verbose
-    verboseprint = print if verbose else lambda *a, **k: None
-    verboseprint(oracle_word())
+from qsextra.tools.oracle import ending_sentence
 
 def __evolve_exsys(system: ExcitonicSystem,
                    state: Qobj,

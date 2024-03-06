@@ -22,3 +22,8 @@ mysticism = [
 
 def oracle_word():
     return secrets.choice(mysticism)
+
+def ending_sentence(verbose: bool):
+    # Define a function to print if verbose
+    verboseprint = print if verbose else lambda *a, **k: None
+    verboseprint(oracle_word())
