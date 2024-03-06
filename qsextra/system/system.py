@@ -12,43 +12,6 @@ from qutip import (Qobj,
 from qsextra.tools import kron, if_scalar_to_list
 
 class ExcitonicSystem():
-    def __init__(self,
-                 energies: list[float] | float | np.ndarray = None,
-                 couplings: list[list[float]] | float | np.ndarray = None,
-                 dipole_moments: list[float] | float | np.ndarray = None,
-                 ):
-        """ Create a ExcitonicSystem object.
-        A ExcitonicSystem object contains the information about the excitonic part of a chromophore system intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
-        The exciton Hamiltonian is
-
-        .. math:: H^{e} = - \sum_{i=1}^{N} \epsilon_{i}/2 \sigma^{z}_{i} + \sum_{i=1}^{N-1} \sum_{j>1}^{N} ( J_{ij} \sigma^{+}_{i} \sigma^{-}_{j} + h.c. )
-
-        where :math:`\epsilon` are the energies and :math:`J` are the couplings.
-        :math:`\sigma^{z}` is the Pauli-z operator (defined as |0><0| - |1><1|), while :math:`\sigma^{+}` (:math:`\sigma^{-}`) are the rising (lowering) ladder operators.
-        
-        Parameters
-        ----------
-        energies: list[float] | float | numpy.ndarray
-            The electronic energy gaps of the chromphores of the network. It is a list, a number (for a single chromophore) or a monodimensional array.
-
-        couplings: list[list[float]] | float | numpy.ndarray
-            The electronic couplings between different chromophores of the network. It is in form of an Hermitian matrix with zeros in the diagonal. An off-diagonal element (i,j) represents the coupling that chromophore i experiences due to chromophore j. If the system is composed of only 2 chromophores, a float value is enough.
-
-        dipole_moments: list[float] | float | numpy.ndarray
-            The amplitude of the transition dipole moments of the chromophores. It is a list, a number (for a single chromophore) or a monodimensional array.
-        """
-        self._system_size = 0
-        self._e_el = None
-        self._dipole_moments = None
-        self._coupl_el = None
-        self._validity = False
-        self._state_type = None
-        self._state = None
-        if energies is not None:
-            self.electronics(energies = energies,
-                             couplings = couplings,
-                             dipole_moments = dipole_moments,
-                             )
 
     @property
     def e_el(self):
@@ -147,6 +110,44 @@ class ExcitonicSystem():
             self.__update_validity()
         else:
             raise Exception('{} parameters cannot be changed after a state has been set.'.format(type(self)))
+
+    def __init__(self,
+                 energies: list[float] | float | np.ndarray = None,
+                 couplings: list[list[float]] | float | np.ndarray = None,
+                 dipole_moments: list[float] | float | np.ndarray = None,
+                 ):
+        """ Create a ExcitonicSystem object.
+        A ExcitonicSystem object contains the information about the excitonic part of a chromophore system intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
+        The exciton Hamiltonian is
+
+        .. math:: H^{e} = - \sum_{i=1}^{N} \epsilon_{i}/2 \sigma^{z}_{i} + \sum_{i=1}^{N-1} \sum_{j>1}^{N} ( J_{ij} \sigma^{+}_{i} \sigma^{-}_{j} + h.c. )
+
+        where :math:`\epsilon` are the energies and :math:`J` are the couplings.
+        :math:`\sigma^{z}` is the Pauli-z operator (defined as |0><0| - |1><1|), while :math:`\sigma^{+}` (:math:`\sigma^{-}`) are the rising (lowering) ladder operators.
+        
+        Parameters
+        ----------
+        energies: list[float] | float | numpy.ndarray
+            The electronic energy gaps of the chromphores of the network. It is a list, a number (for a single chromophore) or a monodimensional array.
+
+        couplings: list[list[float]] | float | numpy.ndarray
+            The electronic couplings between different chromophores of the network. It is in form of an Hermitian matrix with zeros in the diagonal. An off-diagonal element (i,j) represents the coupling that chromophore i experiences due to chromophore j. If the system is composed of only 2 chromophores, a float value is enough.
+
+        dipole_moments: list[float] | float | numpy.ndarray
+            The amplitude of the transition dipole moments of the chromophores. It is a list, a number (for a single chromophore) or a monodimensional array.
+        """
+        self._system_size = 0
+        self._e_el = None
+        self._dipole_moments = None
+        self._coupl_el = None
+        self._validity = False
+        self._state_type = None
+        self._state = None
+        if energies is not None:
+            self.electronics(energies = energies,
+                             couplings = couplings,
+                             dipole_moments = dipole_moments,
+                             )
 
     def __update_validity(self,
                           ):
@@ -300,6 +301,17 @@ class ExcitonicSystem():
             raise Exception("The system is not valid. Please, reset the parameters.")
 
 class ChromophoreSystem(ExcitonicSystem):
+
+    @property
+    def mode_dict(self):
+        return self._mode_dict
+    
+    @mode_dict.setter
+    def mode_dict(self,
+                  md,
+                  ):
+        self._mode_dict = md
+
     def __init__(self,
                  energies: list[float] | float | np.ndarray = None,
                  couplings: list[list[float]] | float | np.ndarray = None,
@@ -361,10 +373,6 @@ class ChromophoreSystem(ExcitonicSystem):
                                  levels_pseudomode = levels_pseudomode,
                                  couplings_ep = couplings_ep,
                                  )
-    
-    @property
-    def mode_dict(self):
-        return self._mode_dict
 
     def pseudomodes(self,
                     frequencies_pseudomode: list[float] | float = None,
@@ -427,7 +435,7 @@ class ChromophoreSystem(ExcitonicSystem):
                             'state_mode': state_mode,
                             }
         
-        self._mode_dict = pseudomodes_dict
+        self.mode_dict = pseudomodes_dict
     
     def __set_mode_state(self,
                          levels_pseudomode: list[int],
@@ -442,7 +450,7 @@ class ChromophoreSystem(ExcitonicSystem):
     
     def get_p_Hamiltonian(self):
         W = len(self.mode_dict['omega_mode'])
-        d = self._mode_dict['lvl_mode']
+        d = self.mode_dict['lvl_mode']
         Id = [identity(d[k]) for k in range(W)]
         H = Qobj()
         for k in range(W):
@@ -456,7 +464,7 @@ class ChromophoreSystem(ExcitonicSystem):
     def get_ep_Hamiltonian(self):
         N = self.system_size
         W = len(self.mode_dict['omega_mode'])
-        d = self._mode_dict['lvl_mode']
+        d = self.mode_dict['lvl_mode']
         Id = [identity(d[k]) for k in range(W)]
         I = identity(2)
         sz = sigmaz()
@@ -478,7 +486,7 @@ class ChromophoreSystem(ExcitonicSystem):
     def get_global_Hamiltonian(self):
         N = self.system_size
         W = len(self.mode_dict['omega_mode'])
-        d = self._mode_dict['lvl_mode']
+        d = self.mode_dict['lvl_mode']
         Id = [identity(d[k]) for k in range(W)]
         I = identity(2)
         H_e = self.get_e_Hamiltonian()
