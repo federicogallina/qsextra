@@ -248,7 +248,7 @@ class ExcitonicSystem():
         '''
         initial_dict = self.__dict__
         sys_dict = {}
-        sys_dict['system_type'] = type(self)
+        sys_dict['class'] = type(self)
         for key in initial_dict:
             new_key = key if key[0] != '_' else key[1:]
             sys_dict[new_key] = initial_dict[key]
