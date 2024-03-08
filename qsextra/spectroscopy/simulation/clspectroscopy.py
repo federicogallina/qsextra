@@ -106,14 +106,23 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                 dipole_op, first_k, first_b = dipole_operator(spectroscopy, first_k, first_b, n_interaction)    # Creating the dipole operator (sigma_x, sigma_+, sigma_-)
                 dipole_op = build_operator(N, site_pathways_index[n_interaction], dipole_op, Id_pseudomodes)    # Adapting dipole operator to the global Hilbert space
                 dm = dipole_application(dm, dipole_op, spectroscopy.side_seq[n_interaction])                    # Applying the operator to the density matrix
-                results = clevolve(system,
-                                   [0, spectroscopy.delay_time[n_interaction][time_index[n_interaction]]],      # Qutip like to start dynamics from t=0
-                                   measure_populations = False,
-                                   state_overwrite = dm,
-                                   verbose = False,
-                                   **clevolve_kwds,
-                                   )
-                dm = results.states[1]
+                try:
+                    results = clevolve(system,
+                                       [0, spectroscopy.delay_time[n_interaction][time_index[n_interaction]]],   # Qutip like to start dynamics from t=0
+                                       measure_populations = False,
+                                       state_overwrite = dm,
+                                       verbose = False,
+                                       **clevolve_kwds,
+                                       )
+                except:
+                    results = clevolve(system,
+                                       spectroscopy.delay_time[n_interaction][0:time_index[n_interaction] + 1], # Qutip like to start dynamics from t=0, sometimes it also want more points.
+                                       measure_populations = False,
+                                       state_overwrite = dm,
+                                       verbose = False,
+                                       **clevolve_kwds,
+                                       )
+                dm = results.states[-1]
             signal[*time_index] += np.sum(expect(e_op_list, dm)) * np.prod([system.dipole_moments[i] for i in site_pathways_index])     # Sum of the expectation values of the dipole operators
     return signal
 
