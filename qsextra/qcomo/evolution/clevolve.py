@@ -26,11 +26,18 @@ def __evolve_exsys(system: ExcitonicSystem,
             ops_list.append(kron(*[I]*(N-i-1), op, *[I]*i))
         return ops_list
     if rates is None:
-        results = sesolve(system.get_e_Hamiltonian(),
-                          state,
-                          time,
-                          e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
-                          )
+        if state.type == 'ket':
+            results = sesolve(system.get_e_Hamiltonian(),
+                              state,
+                              time,
+                              e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
+                              )
+        else:
+            results = mesolve(system.get_e_Hamiltonian(),
+                              state,
+                              time,
+                              e_ops = e_ops(system.system_size, basis(2,1).proj()) if measure_populations else None,
+                              )
     else:
         results = mesolve(system.get_e_Hamiltonian(),
                           state,
@@ -73,11 +80,18 @@ def __evolve_cpsys(system: ChromophoreSystem,
                   *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)]*system.system_size,
                   )
     if rates is None:
-        results = sesolve(system.get_global_Hamiltonian(),
-                          state0,
-                          time,
-                          e_ops = e_ops(system.system_size, basis(2,1).proj(), Id) if measure_populations else None,
-                          )
+        if state0.type == 'ket':
+            results = sesolve(system.get_global_Hamiltonian(),
+                              state0,
+                              time,
+                              e_ops = e_ops(system.system_size, basis(2,1).proj(), Id) if measure_populations else None,
+                              )
+        else:
+            results = mesolve(system.get_global_Hamiltonian(),
+                              state0,
+                              time,
+                              e_ops = e_ops(system.system_size, basis(2,1).proj(), Id) if measure_populations else None,
+                              )
     else:
         results = mesolve(system.get_global_Hamiltonian(),
                           state0,
