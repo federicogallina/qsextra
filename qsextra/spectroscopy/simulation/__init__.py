@@ -1,2 +1,2 @@
-from .qsimulation import qsimulation
-from .clsimulation import clsimulation
+from .qspectroscopy import qspectroscopy
+from .clspectroscopy import clspectroscopy

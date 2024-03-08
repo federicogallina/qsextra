@@ -1,1 +1,2 @@
-from .simulation import clsimulation, qsimulation
+from .spectroscopy import Spectroscopy, FeynmanDiagram
+from .simulation import clspectroscopy, qspectroscopy
