@@ -134,7 +134,6 @@ class FeynmanDiagram(Spectroscopy):
             - `list[numpy.ndarray]`: `[numpy.array([T1a, T1b, T1c]), numpy.array([T2a, T2b, T2c]), numpy.array([T3a, T3b, T3c])]` is converted to `[[T1a, T1b, T1c], [T2a, T2b, T2c], [T3a, T3b, T3c]]`.
             - `list[list[float]]`: `[[T1a, T1b, T1c], [T2a, T2b, T2c], [T3a, T3b, T3c]]` is preserved.
         '''
-        super.__init__()
         self.set(FD_label, delay_time)
 
     def __FD_to_sequence(self):
