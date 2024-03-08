@@ -76,9 +76,14 @@ def __evolve_cpsys(system: ChromophoreSystem,
     W = len(system.mode_dict['omega_mode'])
     d = system._mode_dict['lvl_mode']
     Id = [identity(d[k]) for k in range(W)]
-    state0 = kron(state,
-                  *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)]*system.system_size,
-                  )
+    # Checking if state already contains pseudomodes
+    if state.shape[0] == 2**system.system_size:
+        state0 = kron(state,
+                      *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)]*system.system_size,
+                      )
+    else:
+        state0 = state
+
     if rates is None:
         if state0.type == 'ket':
             results = sesolve(system.get_global_Hamiltonian(),
