@@ -39,9 +39,9 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                 first_b = False
             elif spectroscopy.side_seq[n_interaction] == 'k':
                 first_k = False
-        elif spectroscopy.side_seq[n_interaction] == 'i':
+        elif spectroscopy.direction_seq[n_interaction] == 'i':
             dipole_op = sp
-        elif spectroscopy.side_seq[n_interaction] == 'o':
+        elif spectroscopy.direction_seq[n_interaction] == 'o':
             dipole_op = sm
         return dipole_op, first_k, first_b
 
