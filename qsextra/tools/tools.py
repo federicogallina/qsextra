@@ -1,5 +1,8 @@
 from qutip import tensor, Qobj
 import numpy as np
+import os
+import uuid
+import shutil
 
 def if_scalar_to_list(a):
     ''' Convert a scalar input to a list whose only item is that scalar. If non scalar objects are given as an input, return the object without changes.
@@ -113,3 +116,22 @@ def gray_code_list(n: int) -> list[str]:
         gray = to_gray(i)
         pseudo_encoded.append('{0:0{1}b}'.format(gray,n))
     return pseudo_encoded
+
+def create_checkpoint_folder() -> str:
+    # Generate a UUID (Universally Unique Identifier)
+    unique_id = uuid.uuid4()
+    # Convert UUID to a string and remove hyphens
+    folder_name = str(unique_id).replace('-', '')
+    try:
+        # Create a directory with the generated folder name
+        os.mkdir(folder_name)
+    except OSError as e:
+        print(f"Error creating directory '{folder_name}': {e}")
+    return folder_name
+
+def destroy_checkpoint_folder(folder_name: str):
+    try:
+        # Attempt to remove the folder and its contents
+        shutil.rmtree(folder_name)
+    except OSError as e:
+        print(f"Error deleting directory '{folder_name}': {e}")
