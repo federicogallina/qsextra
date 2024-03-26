@@ -18,7 +18,7 @@ def __create_circuit(system: ChromophoreSystem | ExcitonicSystem,
     qr_e = QuantumRegister(system.system_size, 'sys_e')
     register_list = [qr_e]
     if type(system) is ChromophoreSystem:
-        qr_p_list = [QuantumRegister(len(system.mode_dict['lvl_mode']), 'mode({},{})'.format(i,k)) for i in range(system.system_size) for k in range(len(system.mode_dict['omega_mode']))]
+        qr_p_list = [QuantumRegister(len(system.mode_dict['lvl_mode']), f'mode({i},{k})') for i in range(system.system_size) for k in range(len(system.mode_dict['omega_mode']))]
         register_list += qr_p_list
     if bool_ancillae:
         qr_a = AncillaRegister(1, 'a')
