@@ -176,18 +176,16 @@ def unit_converter(quantity: float,
             return quantity
     # Eliminated the dummy case, check if initial_unit is the inverse of final_unit and convert
     if initial_unit[0:2] == final_unit[0:2]:
-            return 1. / quantity
+            final_quantity = 1. / quantity
+            return final_quantity
     # Other cases
     if initial_unit[-2:] == "-1":
-        quantity *= h_bar
-        if final_unit[-2:] != "-1":
-            return quantity
-        else:
-            return 1. / quantity
-    else:
-        quantity /= h_bar
+        final_quantity = quantity * h_bar
         if final_unit[-2:] == "-1":
-            return quantity
-        else:
-            return 1. / quantity
+            final_quantity = 1. / final_quantity
+    else:
+        final_quantity = quantity / h_bar
+        if final_unit[-2:] != "-1":
+            final_quantity = 1. / final_quantity
+    return final_quantity
     
