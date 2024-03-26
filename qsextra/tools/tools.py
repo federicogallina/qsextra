@@ -135,3 +135,59 @@ def destroy_checkpoint_folder(folder_name: str):
         shutil.rmtree(folder_name)
     except OSError as e:
         print(f"Error deleting directory '{folder_name}': {e}")
+
+def unit_converter(quantity: float,
+                   initial_unit: str,
+                   final_unit: str,
+                   ) -> float:
+    ''' Convert a quantity from one unit of measurement to another.
+    Input
+    -----
+    quantity: float
+        The quantity to convert.
+
+    initial_unit: str
+        The initial unit of measurement. Accepted input:
+        - "eV"
+        - "eV-1"
+        - "fs"
+        - "fs-1"
+    
+    final_unit: str
+        The final unit of measurement. Accepted input:
+        - "eV"
+        - "eV-1"
+        - "fs"
+        - "fs-1"
+
+    Returns
+    -------
+    quantity: float
+        The converted quantity.
+    '''
+    h_bar = 0.658212    # [eV * fs]
+    accepted_units = ["ev", "ev-1", "fs", "fs-1"]
+    initial_unit = initial_unit.casefold()
+    final_unit = final_unit.casefold()
+    if initial_unit not in accepted_units or final_unit not in accepted_units:
+        raise ValueError(f'Input unit not accepted. Accepted units are: {accepted_units}')
+    # Dummy case
+    if initial_unit == final_unit:
+            return quantity
+    # Eliminated the dummy case, check if initial_unit is the inverse of final_unit and convert
+    if initial_unit[0:2] == final_unit[0:2]:
+            return 1. / quantity
+    # Other cases
+    if initial_unit[-2:] == "-1":
+        quantity *= h_bar
+        if final_unit[-2:] != "-1":
+            return quantity
+        else:
+            return 1. / quantity
+    else:
+        quantity /= h_bar
+        if final_unit[-2:] == "-1":
+            return quantity
+        else:
+            return 1. / quantity
+    
