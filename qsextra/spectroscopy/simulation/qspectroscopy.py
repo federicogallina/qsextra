@@ -21,11 +21,26 @@ def __create_circuit(system: ChromophoreSystem | ExcitonicSystem,
     register_list = []
     qr_kb = AncillaRegister(1, 'ketbra')
     register_list.append(qr_kb)
+    # Exciton system qubits
     qr_e = QuantumRegister(system.system_size, 'sys_e')
     register_list.append(qr_e)
+    # Pseudomode qubits
     if type(system) is ChromophoreSystem:
-        qr_p_list = [QuantumRegister(len(system.mode_dict['lvl_mode']), 'mode({},{})'.format(i,k)) for i in range(system.system_size) for k in range(len(system.mode_dict['omega_mode']))]
+        qr_p_list = []
+        for i in range(system.system_size):
+            for k in range(len(system.mode_dict['omega_mode'])):
+                # Checking the number of qubits of the pseudomode
+                d_k = system.mode_dict['lvl_mode'][k]
+                n_qubits = np.log2(d_k)
+                tollerance = 1e-10
+                if np.abs(np.round(n_qubits) - n_qubits) > tollerance:
+                    # This instruction occurs when d is not a power of 2
+                    n_qubits = np.ceil(n_qubits).astype(int)
+                else:
+                    n_qubits = np.round(n_qubits).astype(int)
+                qr_p_list.append(QuantumRegister(n_qubits, f'mode({i},{k})'))
         register_list += qr_p_list
+    # Ancilla qubit for collision model
     if bool_ancillae:
         qr_a = AncillaRegister(1, 'a')
         register_list.append(qr_a)
