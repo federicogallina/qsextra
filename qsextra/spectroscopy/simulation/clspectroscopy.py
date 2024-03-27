@@ -39,10 +39,10 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                 first_b = False
             elif spectroscopy.side_seq[n_interaction] == 'k':
                 first_k = False
-        elif spectroscopy.direction_seq[n_interaction] == 'i':
-            dipole_op = sp
-        elif spectroscopy.direction_seq[n_interaction] == 'o':
-            dipole_op = sm
+        elif (spectroscopy.side_seq[n_interaction] == 'k') ^ (spectroscopy.direction_seq[n_interaction] == 'i'):
+            dipole_op = sm    # ket out | bra in
+        else:
+            dipole_op = sp    # ket in | bra out
         return dipole_op, first_k, first_b
 
     def build_operator(N: int,
