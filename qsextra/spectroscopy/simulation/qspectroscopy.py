@@ -137,8 +137,6 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                                      verbose = False,
                                      **qevolve_kwds,
                                      )[0]
-                    #print('qc_evo:')
-                    #print(qc_evo.draw())
                 qc_new_list = []
                 coeff_new_list = []
                 for n_qc, qc in enumerate(qc_list):
@@ -147,8 +145,6 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                         qc_new.compose(qc_evo, qubits = [qubit for qubit in range(1, n_qubits)], inplace = True)
                         qc_new_list.append(qc_new)
                         coeff_new_list.append(coeff_list[n_qc] * system.dipole_moments[site_pathways_indices[n_interaction]])
-                        #print('qc_new:')
-                        #print(qc_new.draw())
                     else:
                         for op in ['X', 'Y']:
                             qc_new = qc_dipole_application(qc.copy(), qr_kb, qr_e, site_pathways_indices[n_interaction], spectroscopy.side_seq[n_interaction], op)
