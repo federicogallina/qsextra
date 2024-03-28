@@ -34,12 +34,12 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         sm = destroy(2)
         sp = destroy(2).dag()
         # First interaction
-        if first_b or first_k:
+        if spectroscopy.side_seq[n_interaction] == 'b' and first_b:
             dipole_op = sx
-            if spectroscopy.side_seq[n_interaction] == 'b':
-                first_b = False
-            elif spectroscopy.side_seq[n_interaction] == 'k':
-                first_k = False
+            first_b = False
+        elif spectroscopy.side_seq[n_interaction] == 'k' and first_k:
+            dipole_op = sx
+            first_k = False
         # ket out | bra in
         elif (spectroscopy.side_seq[n_interaction] == 'k') ^ (spectroscopy.direction_seq[n_interaction] == 'i'):
             dipole_op = sm
@@ -175,6 +175,6 @@ def clspectroscopy(system: ChromophoreSystem | ExcitonicSystem,
     if spectroscopy.side_seq == '' or spectroscopy.direction_seq == '':
         raise ValueError('Spectroscopy object is not correctly defined. Spectroscopy.side_seq or Spectroscopy.direction_seq are missing.')
 
-    signal = __run(system, spectroscopy, clevolve_kwds)    
+    signal = __run(system, spectroscopy, clevolve_kwds)
     ending_sentence(verbose)
     return signal
