@@ -140,11 +140,27 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                 qc_new_list = []
                 coeff_new_list = []
                 for n_qc, qc in enumerate(qc_list):
-                    if first_b or first_k or last_op:
+                    # If first interaction with bra or ket or signal emission
+                    if spectroscopy.side_seq[n_interaction] == 'b' and first_b:
                         qc_new = qc_dipole_application(qc.copy(), qr_kb, qr_e, site_pathways_indices[n_interaction], spectroscopy.side_seq[n_interaction], 'X')
                         qc_new.compose(qc_evo, qubits = [qubit for qubit in range(1, n_qubits)], inplace = True)
                         qc_new_list.append(qc_new)
                         coeff_new_list.append(coeff_list[n_qc] * system.dipole_moments[site_pathways_indices[n_interaction]])
+                        first_b = False
+                    # If first interaction with ket
+                    elif spectroscopy.side_seq[n_interaction] == 'k' and first_k:
+                        qc_new = qc_dipole_application(qc.copy(), qr_kb, qr_e, site_pathways_indices[n_interaction], spectroscopy.side_seq[n_interaction], 'X')
+                        qc_new.compose(qc_evo, qubits = [qubit for qubit in range(1, n_qubits)], inplace = True)
+                        qc_new_list.append(qc_new)
+                        coeff_new_list.append(coeff_list[n_qc] * system.dipole_moments[site_pathways_indices[n_interaction]])
+                        first_k = False
+                    # If signal emission
+                    elif last_op:
+                        qc_new = qc_dipole_application(qc.copy(), qr_kb, qr_e, site_pathways_indices[n_interaction], spectroscopy.side_seq[n_interaction], 'X')
+                        qc_new.compose(qc_evo, qubits = [qubit for qubit in range(1, n_qubits)], inplace = True)
+                        qc_new_list.append(qc_new)
+                        coeff_new_list.append(coeff_list[n_qc] * system.dipole_moments[site_pathways_indices[n_interaction]])
+                    # Remaining cases
                     else:
                         for op in ['X', 'Y']:
                             qc_new = qc_dipole_application(qc.copy(), qr_kb, qr_e, site_pathways_indices[n_interaction], spectroscopy.side_seq[n_interaction], op)
@@ -158,10 +174,6 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                                 coeff_new_list.append(coeff_list[n_qc] * system.dipole_moments[site_pathways_indices[n_interaction]] * (-1.j / 2))    # That is I applied mu^+ operator
                 qc_list = qc_new_list
                 coeff_list = coeff_new_list
-                if spectroscopy.side_seq[n_interaction] == 'b':
-                    first_b = False
-                elif spectroscopy.side_seq[n_interaction] == 'k':
-                    first_k = False
             qc_mega_list += qc_list
             coeff_mega_list += coeff_list
         # Executing the circuits and getting expectation values
