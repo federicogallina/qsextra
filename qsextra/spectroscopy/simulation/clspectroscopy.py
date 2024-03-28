@@ -33,16 +33,19 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         sx = sigmax()
         sm = destroy(2)
         sp = destroy(2).dag()
+        # First interaction
         if first_b or first_k:
             dipole_op = sx
             if spectroscopy.side_seq[n_interaction] == 'b':
                 first_b = False
             elif spectroscopy.side_seq[n_interaction] == 'k':
                 first_k = False
+        # ket out | bra in
         elif (spectroscopy.side_seq[n_interaction] == 'k') ^ (spectroscopy.direction_seq[n_interaction] == 'i'):
-            dipole_op = sm    # ket out | bra in
+            dipole_op = sm
+        # ket in | bra out
         else:
-            dipole_op = sp    # ket in | bra out
+            dipole_op = sp
         return dipole_op, first_k, first_b
 
     def build_operator(N: int,
@@ -61,9 +64,10 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                            side: str,
                            ):
         if side == 'b':
-            return dm * dipole_op
+            dm_output = dm * dipole_op
         elif side == 'k':
-            return dipole_op * dm
+            dm_output = dipole_op * dm
+        return dm_output
 
     # Defining system operators
     N = system.system_size
@@ -83,7 +87,7 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         Id_pseudomodes = None
 
     # Defining the list with the expectation operators (terminal dipole moment which can be applied to any chromophore)
-    e_op_list = [system.dipole_moments[j] * build_operator(N, j, sx, Id_pseudomodes) for j in range(N)]
+    e_op_list = [system.dipole_moments[i] * build_operator(N, i, sx, Id_pseudomodes) for i in range(N)]
 
     # Defining the output variable (signal)
     size_signal = [len(T) for T in spectroscopy.delay_time]
