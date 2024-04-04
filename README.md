@@ -17,7 +17,7 @@ The software requires the following packages to be installed:
 
 Once Conda is installed, create a new environment
 ```
-conda create --name qsextra_env python=3.11.5
+conda create --name qsextra_env python==3.11.5
 ```
 and switch to it by running
 ```
