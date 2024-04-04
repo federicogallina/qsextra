@@ -9,5 +9,5 @@ setup(
     long_description='Simulate exciton transport in molecular network in  presence of an environment.',
     packages=find_packages(),
     url='https://github.com/federicogallina/qsextra',
-    install_requires=['numpy','scipy','matplotlib','qiskit','qiskit-aer','qutip']
+    install_requires=['numpy','scipy','matplotlib','qiskit','qiskit-aer','qutip==4.7.5']
 )
