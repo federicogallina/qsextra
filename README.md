@@ -28,13 +28,7 @@ Clone the repository using
 ```
 git clone https://github.com/federicogallina/qsextra.git
 ```
-
-From the parent repository folder, in your `qsextra_env`, the requirements can be installed with
-```
-pip install -r requirements
-```
-
-Then, run the following to install the `qsextra` package
+enter the folder and install the `qsextra` module with
 ```
 pip install -e .
 ```
