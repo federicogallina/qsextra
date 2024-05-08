@@ -101,7 +101,7 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
     site_pathways_indices_list = combinations_of_indices([N] * (len(spectroscopy.delay_time) + 1))
 
     # Checkpoint folder
-    if checkpoint and restart_from_checkpoint is None:
+    if checkpoint and (restart_from_checkpoint is None):
         checkpoint_folder = create_checkpoint_folder()
         print(f'Checkpoint folder created ({checkpoint_folder})')
     elif restart_from_checkpoint is not None:
