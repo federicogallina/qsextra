@@ -81,7 +81,7 @@ def __2D_ft(response_function,
     omega3 = fftshift(2*np.pi*fftfreq(len(T3) * pad_extension, dt3)) + RF_freq
     omega1, omega3 = np.meshgrid(omega1, omega3, indexing='ij')
     omega = [omega1, omega3]
-    response_function_pad = np.pad(response_function, ((0,len(T1) * (pad_extension-1)), (0,len(T3) * (pad_extension-1))), 'constant')
+    response_function_pad = np.pad(response_function, ((0, len(T1) * (pad_extension-1)), (0, len(T3) * (pad_extension-1))), 'constant')
     freq_spectra = len(response_function_pad)/len(response_function)**2 * fftshift(ifft(fftshift(fft(response_function_pad, axis=0), axes=0), axis=1), axes=1)
     return omega, freq_spectra
 

@@ -1,5 +1,8 @@
 from qutip import tensor, Qobj
 import numpy as np
+import os
+import uuid
+import shutil
 
 def if_scalar_to_list(a):
     ''' Convert a scalar input to a list whose only item is that scalar. If non scalar objects are given as an input, return the object without changes.
@@ -113,3 +116,76 @@ def gray_code_list(n: int) -> list[str]:
         gray = to_gray(i)
         pseudo_encoded.append('{0:0{1}b}'.format(gray,n))
     return pseudo_encoded
+
+def create_checkpoint_folder() -> str:
+    # Generate a UUID (Universally Unique Identifier)
+    unique_id = uuid.uuid4()
+    # Convert UUID to a string and remove hyphens
+    folder_name = str(unique_id).replace('-', '')
+    try:
+        # Create a directory with the generated folder name
+        os.mkdir(folder_name)
+    except OSError as e:
+        print(f"Error creating directory '{folder_name}': {e}")
+    return folder_name
+
+def destroy_checkpoint_folder(folder_name: str):
+    try:
+        # Attempt to remove the folder and its contents
+        shutil.rmtree(folder_name)
+    except OSError as e:
+        print(f"Error deleting directory '{folder_name}': {e}")
+
+def unit_converter(quantity: float,
+                   initial_unit: str,
+                   final_unit: str,
+                   ) -> float:
+    ''' Convert a quantity from one unit of measurement to another.
+    Input
+    -----
+    quantity: float
+        The quantity to convert.
+
+    initial_unit: str
+        The initial unit of measurement. Accepted input:
+        - "eV"
+        - "eV-1"
+        - "fs"
+        - "fs-1"
+    
+    final_unit: str
+        The final unit of measurement. Accepted input:
+        - "eV"
+        - "eV-1"
+        - "fs"
+        - "fs-1"
+
+    Returns
+    -------
+    quantity: float
+        The converted quantity.
+    '''
+    h_bar = 0.658212    # [eV * fs]
+    accepted_units = ["ev", "ev-1", "fs", "fs-1"]
+    initial_unit = initial_unit.casefold()
+    final_unit = final_unit.casefold()
+    if initial_unit not in accepted_units or final_unit not in accepted_units:
+        raise ValueError(f'Input unit not accepted. Accepted units are: {accepted_units}')
+    # Dummy case
+    if initial_unit == final_unit:
+            return quantity
+    # Eliminated the dummy case, check if initial_unit is the inverse of final_unit and convert
+    if initial_unit[0:2] == final_unit[0:2]:
+            final_quantity = 1. / quantity
+            return final_quantity
+    # Other cases
+    if initial_unit[-2:] == "-1":
+        final_quantity = quantity * h_bar
+        if final_unit[-2:] == "-1":
+            final_quantity = 1. / final_quantity
+    else:
+        final_quantity = quantity / h_bar
+        if final_unit[-2:] != "-1":
+            final_quantity = 1. / final_quantity
+    return final_quantity
+    

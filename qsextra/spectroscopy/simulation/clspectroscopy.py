@@ -33,16 +33,19 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         sx = sigmax()
         sm = destroy(2)
         sp = destroy(2).dag()
-        if first_b or first_k:
+        # First interaction
+        if spectroscopy.side_seq[n_interaction] == 'b' and first_b:
             dipole_op = sx
-            if spectroscopy.side_seq[n_interaction] == 'b':
-                first_b = False
-            elif spectroscopy.side_seq[n_interaction] == 'k':
-                first_k = False
-        elif spectroscopy.side_seq[n_interaction] == 'i':
-            dipole_op = sp
-        elif spectroscopy.side_seq[n_interaction] == 'o':
+            first_b = False
+        elif spectroscopy.side_seq[n_interaction] == 'k' and first_k:
+            dipole_op = sx
+            first_k = False
+        # ket out | bra in
+        elif (spectroscopy.side_seq[n_interaction] == 'k') ^ (spectroscopy.direction_seq[n_interaction] == 'i'):
             dipole_op = sm
+        # ket in | bra out
+        else:
+            dipole_op = sp
         return dipole_op, first_k, first_b
 
     def build_operator(N: int,
@@ -61,9 +64,10 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                            side: str,
                            ):
         if side == 'b':
-            return dm * dipole_op
+            dm_output = dm * dipole_op
         elif side == 'k':
-            return dipole_op * dm
+            dm_output = dipole_op * dm
+        return dm_output
 
     # Defining system operators
     N = system.system_size
@@ -83,32 +87,32 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         Id_pseudomodes = None
 
     # Defining the list with the expectation operators (terminal dipole moment which can be applied to any chromophore)
-    e_op_list = [system.dipole_moments[j] * build_operator(N, j, sx, Id_pseudomodes) for j in range(N)]
+    e_op_list = [system.dipole_moments[i] * build_operator(N, i, sx, Id_pseudomodes) for i in range(N)]
 
     # Defining the output variable (signal)
     size_signal = [len(T) for T in spectroscopy.delay_time]
     signal = np.zeros(size_signal, dtype = complex)
     # Defining a list with all the indices of signal
-    time_indices = combinations_of_indices(size_signal)
+    time_indices_list = combinations_of_indices(size_signal)
 
     # Doing a similar thing to define the site pathways
-    site_pathways_indices = combinations_of_indices([N] * len(spectroscopy.delay_time))
+    site_pathways_indices_list = combinations_of_indices([N] * len(spectroscopy.delay_time))
 
     # Running over the site pathways
-    for site_pathways_index in site_pathways_indices:
+    for site_pathways_indices in site_pathways_indices_list:
         # Running over all the possibile combinations of times
-        for time_index in time_indices:
+        for time_indices in time_indices_list:
             first_k = True
             first_b = True
             dm = ket2dm(state_0)
             # Running over the light-matter interaction events
-            for n_interaction in range(len(spectroscopy.delay_time)):
+            for n_interaction in range(len(site_pathways_indices)):
                 dipole_op, first_k, first_b = dipole_operator(spectroscopy, first_k, first_b, n_interaction)    # Creating the dipole operator (sigma_x, sigma_+, sigma_-)
-                dipole_op = build_operator(N, site_pathways_index[n_interaction], dipole_op, Id_pseudomodes)    # Adapting dipole operator to the global Hilbert space
+                dipole_op = build_operator(N, site_pathways_indices[n_interaction], dipole_op, Id_pseudomodes)    # Adapting dipole operator to the global Hilbert space
                 dm = dipole_application(dm, dipole_op, spectroscopy.side_seq[n_interaction])                    # Applying the operator to the density matrix
                 try:
                     results = clevolve(system,
-                                       [0, spectroscopy.delay_time[n_interaction][time_index[n_interaction]]],   # Qutip like to start dynamics from t=0
+                                       [0, spectroscopy.delay_time[n_interaction][time_indices[n_interaction]]],   # Qutip like to start dynamics from t=0
                                        measure_populations = False,
                                        state_overwrite = dm,
                                        verbose = False,
@@ -116,14 +120,14 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
                                        )
                 except:
                     results = clevolve(system,
-                                       spectroscopy.delay_time[n_interaction][0:time_index[n_interaction] + 1], # Qutip like to start dynamics from t=0, sometimes it also want more points.
+                                       spectroscopy.delay_time[n_interaction][0:time_indices[n_interaction] + 1], # Qutip like to start dynamics from t=0, sometimes it also want more points.
                                        measure_populations = False,
                                        state_overwrite = dm,
                                        verbose = False,
                                        **clevolve_kwds,
                                        )
                 dm = results.states[-1]
-            signal[*time_index] += np.sum(expect(e_op_list, dm)) * np.prod([system.dipole_moments[i] for i in site_pathways_index])     # Sum of the expectation values of the dipole operators
+            signal[*time_indices] += np.sum(expect(e_op_list, dm)) * np.prod([system.dipole_moments[i] for i in site_pathways_indices])     # Sum of the expectation values of the dipole operators
     return signal
 
 def clspectroscopy(system: ChromophoreSystem | ExcitonicSystem,
@@ -171,6 +175,6 @@ def clspectroscopy(system: ChromophoreSystem | ExcitonicSystem,
     if spectroscopy.side_seq == '' or spectroscopy.direction_seq == '':
         raise ValueError('Spectroscopy object is not correctly defined. Spectroscopy.side_seq or Spectroscopy.direction_seq are missing.')
 
-    signal = __run(system, spectroscopy, clevolve_kwds)    
+    signal = __run(system, spectroscopy, clevolve_kwds)
     ending_sentence(verbose)
     return signal
