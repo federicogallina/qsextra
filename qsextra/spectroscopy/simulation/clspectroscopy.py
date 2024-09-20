@@ -80,9 +80,10 @@ def __run(system: ChromophoreSystem | ExcitonicSystem,
         W = len(system.mode_dict['omega_mode'])
         d = system._mode_dict['lvl_mode']
         Id_pseudomodes = [identity(d[k]) for k in range(W)]
+        state_modes = system.get_state_mode()
         state_0 = kron(state_0,
-                       *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)] * N,
-                       )
+                      *[state_modes[k] for k in range(W)] * N,
+                      )
     else:
         Id_pseudomodes = None
 
