@@ -8,6 +8,7 @@ from qutip import (Qobj,
                    destroy,
                    basis,
                    zero_ket,
+                   qzero,
                    )
 from qsextra.tools import kron, if_scalar_to_list
 
@@ -264,7 +265,7 @@ class ExcitonicSystem():
             sm = destroy(2)
             sp = destroy(2).dag()
             I = identity(2)
-            H = Qobj(np.zeros([2**self.system_size, 2**self.system_size]), dims=[[2]*self.system_size, [2]*self.system_size])
+            H = qzero(dimensions = [2]*self.system_size)
             for i in range(self.system_size):
                 for j in range(i, self.system_size):
                     if i != j:
@@ -475,7 +476,7 @@ class ChromophoreSystem(ExcitonicSystem):
         W = len(self.mode_dict['omega_mode'])
         d = self.mode_dict['lvl_mode']
         Id = [identity(d[k]) for k in range(W)]
-        H = Qobj(np.zeros([np.prod(d), np.prod(d)]), dims=[d,d])
+        H = qzero(dimensions = d)
         for k in range(W):
             a = destroy(d[k])
             H += self.mode_dict['omega_mode'][k] * kron(*Id[:k],
@@ -491,7 +492,7 @@ class ChromophoreSystem(ExcitonicSystem):
         Id = [identity(d[k]) for k in range(W)]
         I = identity(2)
         sz = sigmaz()
-        H = Qobj(np.zeros([2**N * np.prod(d)**N, 2**N * np.prod(d)**N]), dims=[[2]*N + d*N, [2]*N + d*N])
+        H = qzero(dimensions = [2]*N + d*N)
         for i in range(N):
             for k in range(W):
                 a = destroy(d[k])

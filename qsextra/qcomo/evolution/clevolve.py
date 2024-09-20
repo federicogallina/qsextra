@@ -2,7 +2,6 @@ from qsextra import ExcitonicSystem, ChromophoreSystem
 import numpy as np
 import warnings
 from qutip import (Qobj,
-                   ket,
                    mesolve,
                    sesolve,
                    sigmaz,
