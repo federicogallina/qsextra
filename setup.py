@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='qsextra',
-    version=0.0,
+    version=0.1,
     author='Federico Gallina',
     author_email='federico.gallina@unipd.it',
     description='Quantum Simulation of Exciton Transport',
@@ -14,6 +14,6 @@ setup(
                       'matplotlib',
                       'qiskit==1.0.0',
                       'qiskit-aer==0.13.3',
-                      'qutip==4.7.5',
+                      'qutip>=4.7.5',
                      ]
 )

@@ -2,6 +2,7 @@ from qsextra import ExcitonicSystem, ChromophoreSystem
 import numpy as np
 import warnings
 from qutip import (Qobj,
+                   ket,
                    mesolve,
                    sesolve,
                    sigmaz,
@@ -78,8 +79,9 @@ def __evolve_cpsys(system: ChromophoreSystem,
     Id = [identity(d[k]) for k in range(W)]
     # Checking if state already contains pseudomodes
     if state.shape[0] == 2**system.system_size:
+        state_modes = system.get_state_mode()
         state0 = kron(state,
-                      *[Qobj(np.array(system.mode_dict['state_mode'][k]), type='ket') for k in range(W)]*system.system_size,
+                      *[state_modes[k] for k in range(W)]*system.system_size,
                       )
     else:
         state0 = state

@@ -116,7 +116,7 @@ class ExcitonicSystem():
                  couplings: list[list[float]] | float | np.ndarray = None,
                  dipole_moments: list[float] | float | np.ndarray = None,
                  ):
-        """ Create an `ExcitonicSystem` object.
+        r""" Create an `ExcitonicSystem` object.
         An `ExcitonicSystem` object contains the information about the excitonic part of a chromophore system intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
         The exciton Hamiltonian is
 
@@ -183,7 +183,7 @@ class ExcitonicSystem():
                   state_type: Literal['state', 'delocalized excitation', 'localized excitation', 'ground'] = 'ground',
                   state: list | np.ndarray | int = 0,
                   ):
-        """ Set the `ExcitonicSystem` electronic ket state.
+        r""" Set the `ExcitonicSystem` electronic ket state.
         Note that in this version of the code only pure states are accepted.
 
         Parameters
@@ -264,7 +264,7 @@ class ExcitonicSystem():
             sm = destroy(2)
             sp = destroy(2).dag()
             I = identity(2)
-            H = Qobj()
+            H = Qobj(np.zeros([2**self.system_size, 2**self.system_size]), dims=[[2]*self.system_size, [2]*self.system_size])
             for i in range(self.system_size):
                 for j in range(i, self.system_size):
                     if i != j:
@@ -285,7 +285,7 @@ class ExcitonicSystem():
             elif self.state_type == 'state':
                 state = Qobj(np.array(self.state), dims = [[2] * self.system_size, [1] * self.system_size], type = 'ket')
             elif self.state_type == 'delocalized excitation':
-                state = zero_ket(2**self.system_size, dims = [[2] * self.system_size, [1] * self.system_size])
+                state = zero_ket(dimensions = [2] * self.system_size)
                 for nc, c in enumerate(self.state):
                     position = position = [0] * self.system_size
                     position[nc] = 1
@@ -321,7 +321,7 @@ class ChromophoreSystem(ExcitonicSystem):
                  levels_pseudomode: int = None,
                  couplings_ep: list[float] | float = None,
                  ):
-        """ Create a `ChromophoreSystem` object.
+        r""" Create a `ChromophoreSystem` object.
         A `ChromophoreSystem` object contains the information about the whole chromophore intended as a collection of two-level electronic systems with a groung |0> and an excited |1> states.
         The exciton Hamiltonian is
 
@@ -379,7 +379,7 @@ class ChromophoreSystem(ExcitonicSystem):
                     levels_pseudomode: list[int] | int = None,
                     couplings_ep: list[float] | float = None,
                     ):
-        '''
+        r"""
         It is possible to couple harmonic pseudomodes to the electronic degrees of freedom.
         The pseudomode environment are assumed to be identical for every chromophore.
         In this version of the code, when this function is called, the state of the pseudomodes is set as the state where only the lower level is populated.
@@ -394,7 +394,7 @@ class ChromophoreSystem(ExcitonicSystem):
 
         couplings_ep: list[float] | float
             The system-pseudomode coupings between electronic and pseudomode degrees of freedom. If a single pseudomode per chromophore is considered, a float value is accepted.
-        '''
+        """
         # Checking frequencies_pseudomode
         if frequencies_pseudomode is None:
             raise Exception('frequencies_pseudomode is not specified.')
@@ -448,11 +448,34 @@ class ChromophoreSystem(ExcitonicSystem):
             state_mode[i] += [0.+0.j] * (levels_pseudomode[i] - 1)
         return state_mode
     
+    def get_state_mode(self,
+                       mode_number: int | None = None,
+                       ):
+        """ If mode_number is specified, return the state of the relative pseudomode. Otherwise, return a list with all the states.
+        """
+        if mode_number is None:
+            states = []
+            for i in range(len(self.mode_dict['state_mode'])):
+                state = zero_ket(dimensions = self.mode_dict['lvl_mode'][i])
+                for j in range(len(self.mode_dict['state_mode'][i])):
+                    state += self.mode_dict['state_mode'][i][j] * basis(self.mode_dict['lvl_mode'][i], j)
+                states.append(state)
+            return states
+        else:
+            if not isinstance(mode_number, int):
+                raise TypeError('mode_number must be int or None.')
+            if mode_number >= len(self.mode_dict['lvl_mode']):
+                raise ValueError('mode_number must be lower than {} or None.'.format(len(self.mode_dict['lvl_mode'])))
+            state = zero_ket(dimensions = self.mode_dict['lvl_mode'][mode_number])
+            for j in len(self.mode_dict['state_mode'][mode_number]):
+                state += self.mode_dict['state_mode'][mode_number][j] * basis(self.mode_dict['lvl_mode'][mode_number], j)
+            return state
+    
     def get_p_Hamiltonian(self):
         W = len(self.mode_dict['omega_mode'])
         d = self.mode_dict['lvl_mode']
         Id = [identity(d[k]) for k in range(W)]
-        H = Qobj()
+        H = Qobj(np.zeros([np.prod(d), np.prod(d)]), dims=[d,d])
         for k in range(W):
             a = destroy(d[k])
             H += self.mode_dict['omega_mode'][k] * kron(*Id[:k],
@@ -468,7 +491,7 @@ class ChromophoreSystem(ExcitonicSystem):
         Id = [identity(d[k]) for k in range(W)]
         I = identity(2)
         sz = sigmaz()
-        H = Qobj()
+        H = Qobj(np.zeros([2**N * np.prod(d)**N, 2**N * np.prod(d)**N]), dims=[[2]*N + d*N, [2]*N + d*N])
         for i in range(N):
             for k in range(W):
                 a = destroy(d[k])
