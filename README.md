@@ -24,7 +24,7 @@ pip install -e .
 ```
 
 ## Inside `qsextra`
-This package has been used to obtain results presented in [Gallina, F.; Bruschi, M.; Fresch, B. Simulating Non-Markovian Dynamics in Multidimensional Electronic Spectroscopy via Quantum Algorithm (2024)](https://doi.org/10.48550/arXiv.2409.05548).
+This package has been used to obtain results presented in [Gallina, F.; Bruschi, M.; Cacciari, R.; Fresch, B. Simulating Non-Markovian Dynamics in Multidimensional Electronic Spectroscopy via Quantum Algorithm (2024)](https://doi.org/10.48550/arXiv.2409.05548).
 
 The package is composed of two main modules:
 - `qcomo` (quantum collision model): Simulation of the exciton dynamics in chromophore aggregates. The open quantum system dynamics is implemented in terms of quanutm circuits (`qevolve`) using a collision model. Pseudomode technique can be used to account for a non-Markovian environment. A classical execution of the system-pseudomode (`clevolve`) dynamics is also available, based on Qutip master equation solver;
