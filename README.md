@@ -1,5 +1,6 @@
-![Alt text](Images/qsextra_logo.png?raw=true "Title")
 # QSExTra: Quantum Simulation of Exciton Transport
+
+![Alt text](Images/qsextra_logo.png?raw=true "Title")
 
 ## Installing the `qsextra` package and dependences
 We advise the use of [Conda](https://www.anaconda.com/products/individual) for a clean setup.
