@@ -3,7 +3,6 @@ Part of this code was originally included in the qudofedi package (https://githu
 '''
 
 import numpy as np
-from qsextra.tools import if_scalar_to_list
 
 class Spectroscopy():
 
